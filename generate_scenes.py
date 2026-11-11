@@ -315,6 +315,8 @@ def build_extra_tiles() -> bytes:
         tiles[idx - EXTRA_FIRST] = data
     for idx, data in car_tile_map().items():
         tiles[idx - EXTRA_FIRST] = data
+    for idx, pattern in holo_obj_tiles().items():
+        put(idx, pattern)
     out = b"".join(tiles)
     assert len(out) == (EXTRA_LAST - EXTRA_FIRST + 1) * 32
     return out
@@ -400,28 +402,6 @@ def add_stars(img: list[list[int]], count: int, seed: int, ymax: int | None = No
         if c >= 7:
             put(img, x + 1, y, c - 2)
             put(img, x, y + 1, c - 2)
-
-
-def make_planet_bg() -> list[list[int]]:
-    img = new_image(88, 77)
-    # faint nebula bands
-    for y in range(77):
-        for x in range(88):
-            v = math.sin(x * 0.11 + y * 0.07) + math.sin(x * 0.05 - y * 0.13)
-            if v > 1.35:
-                img[y][x] = 1
-            elif v > 1.05:
-                img[y][x] = 2
-    # halo behind the planet
-    for y in range(77):
-        for x in range(88):
-            d = math.sqrt((x - 44) ** 2 + (y - 39) ** 2)
-            if 17 < d < 29:
-                img[y][x] = max(img[y][x], 1)
-            elif 13 < d <= 17:
-                img[y][x] = max(img[y][x], 2)
-    add_stars(img, 150, 11)
-    return img
 
 
 def make_city_bg() -> list[list[int]]:
@@ -1074,67 +1054,6 @@ class Frame:
 
 def clamp(v: float, lo: int, hi: int) -> int:
     return max(lo, min(hi, int(round(v))))
-
-
-def holo_frames() -> list[bytes]:
-    frames = []
-    lats = [-72, -45, -18, 18, 45, 72]
-    nlon = 9
-    radius = 52.0
-    for f in range(FRAME_COUNT):
-        fr = Frame()
-        t = f / FRAME_COUNT
-        rot = 2.0 * math.pi * t
-        points: list[tuple[float, int, int, int, int]] = []  # z, x, y, tile, pal
-        for lat_deg in lats:
-            lat = math.radians(lat_deg)
-            for j in range(nlon):
-                lon = 2.0 * math.pi * j / nlon + rot
-                x3 = math.cos(lat) * math.sin(lon)
-                y3 = math.sin(lat)
-                z3 = math.cos(lat) * math.cos(lon)
-                s = 1.0 + 0.10 * z3
-                px = int(round(128 + radius * x3 * s))
-                py = int(round(104 + radius * y3 * s))
-                if z3 > 0.35:
-                    tile, pal = DOT_LARGE, 1
-                elif z3 > -0.15:
-                    tile, pal = DOT_MID, 3
-                else:
-                    tile, pal = DOT_SMALL, 2
-                points.append((z3, px, py, tile, pal))
-        # Planetary ring.  The ring is deliberately static: a fraction of a
-        # turn per loop would make the whole scene jump when frame 119 wraps
-        # back to frame 0.
-        for j in range(24):
-            u = 2.0 * math.pi * j / 24
-            px = int(round(128 + 80 * math.cos(u)))
-            py = int(round(104 + 25 * math.sin(u)))
-            z = math.sin(u)
-            if z > 0.05:
-                tile, pal = DOT_MID, 4
-            else:
-                tile, pal = DOT_SMALL, 2
-            points.append((z, px, py, tile, pal))
-        points.sort(key=lambda p: p[0])
-        for z, px, py, tile, pal in points:
-            fr.add(px, py, tile, pal)
-        # Moons and their faint trails.  One whole orbit per loop keeps the
-        # wrap from frame 119 to frame 0 invisible.
-        for m in range(2):
-            ang = 2.0 * math.pi * (t + m * 0.5) + 0.7
-            mx = 128 + int(round(104 * math.cos(ang)))
-            my = 104 + int(round(42 * math.sin(ang)))
-            pal = 5 if m == 0 else 7
-            for k in (4, 3, 2, 1):
-                ta = ang - k * 0.035
-                tx = 128 + int(round(104 * math.cos(ta)))
-                ty = 104 + int(round(42 * math.sin(ta)))
-                fr.add(tx, ty, DOT_SMALL, pal)
-            fr.add(mx - 8, my - 8, GLOW16, pal, large=True)
-        fr.add(128 - 8, 104 - 8, GLOW16, 0, large=True)
-        frames.append(fr.data())
-    return frames
 
 
 def city_frames() -> list[bytes]:
@@ -1902,6 +1821,726 @@ class MagiAssets:
 
 
 # ---------------------------------------------------------------------------
+# Holo Planet: NERV holographic planet monitor (Mode 1 console)
+#
+# BG1 is the console (4bpp, palette 0).  BG2 holds the static globe furniture
+# (limb, latitude parallels, orbital rings) at low priority, so the console
+# clips it, while the animated cells (spectrum, load bars, gauge thumb and
+# beacons) sit at high priority over BG1.  The planet surface is a dot matrix:
+# HOLO_PHASES precomputed rotation phases, each with two complementary OAM
+# frames that are flickered (persistence of vision) so the globe shows twice
+# the sprites the hardware can draw at once.  The D-pad drives the phase.
+# ---------------------------------------------------------------------------
+HOLO_PHASES = 120
+HOLO_W, HOLO_H = 256, 224
+HOLO_R = 60.0
+HOLO_CX, HOLO_CY = 158.0, 103.0
+HOLO_PITCH = 0.40
+HOLO_ROLL = -0.26
+HOLO_FOV = 300.0
+HOLO_WINDOW = (60, 27, 254, 176)        # x0,y0,x1,y1 - transparent in BG1
+HOLO_MERIDIANS = 12
+HOLO_PARALLELS = (-72, -48, -24, 0, 24, 48, 72)
+HOLO_MERIDIAN_LATS = tuple(-78.0 + 156.0 * j / 9.0 for j in range(10))
+HOLO_PARTICLES = 40
+HOLO_SLOTS = 96
+HOLO_SPECTRUM_BARS = 23
+HOLO_SPECTRUM_ROW = 23
+HOLO_SPECTRUM_X0 = 8                   # first BG2 cell column of the bars
+HOLO_BG1_SCREEN = 0x3800                # BG1 map word address
+HOLO_BG2_SCREEN = 0x3C00                # BG2 map word address
+
+# Rings: (radius, extra pitch, extra roll, extra yaw)
+HOLO_RINGS = (
+    (1.30, 0.62, 0.00, 0.00),
+    (1.45, -0.42, 0.55, 0.35),
+    (1.60, 0.18, -0.55, -0.25),
+)
+HOLO_GLOW_RING = 1.74
+# Satellites: (ring index, direction, phase offset)
+HOLO_SATELLITES = (
+    (0, +1, 0.00, "SAT-01"),
+    (0, -1, math.pi, "SAT-02"),
+    (1, +1, 1.05, None),
+    (2, -1, 2.20, None),
+)
+
+# OBJ tiles added for the globe dots (extra-tile slots 72..76 are free).
+HOLO_DOT4 = 72
+HOLO_DOT3 = 73
+HOLO_DOT2 = 74
+HOLO_DOT2D = 75
+HOLO_SAT = 76
+
+HOLO_UI_COLORS = [
+    "000000",  # 0  transparent / backdrop
+    "050200",  # 1  panel black
+    "100700",  # 2  panel scanline
+    "241000",  # 3  dark amber
+    "3E1B00",  # 4  dim amber
+    "642C00",  # 5  mid amber
+    "8F4000",  # 6  amber dim
+    "C25600",  # 7  amber
+    "FF6A00",  # 8  amber bright (NERV)
+    "FF9421",  # 9  amber light
+    "FFC266",  # 10 pale amber
+    "FFE9B8",  # 11 warm white
+    "FFFFFF",  # 12 white
+    "8A1400",  # 13 dark red
+    "FF2020",  # 14 red
+    "66FF99",  # 15 green
+]
+
+HOLO_UI_PAL = 0
+
+
+def build_holo_palette(theme: int) -> list[int]:
+    return [rgb555(*magi_theme_color(hx(c), theme)) for c in HOLO_UI_COLORS]
+
+
+# 3x5 micro font, used for the dense console readouts (4px pitch).
+HOLO_TINY = {
+    " ": ("...", "...", "...", "...", "..."),
+    "A": (".#.", "#.#", "###", "#.#", "#.#"),
+    "B": ("##.", "#.#", "##.", "#.#", "##."),
+    "C": (".##", "#..", "#..", "#..", ".##"),
+    "D": ("##.", "#.#", "#.#", "#.#", "##."),
+    "E": ("###", "#..", "##.", "#..", "###"),
+    "F": ("###", "#..", "##.", "#..", "#.."),
+    "G": (".##", "#..", "#.#", "#.#", ".##"),
+    "H": ("#.#", "#.#", "###", "#.#", "#.#"),
+    "I": ("###", ".#.", ".#.", ".#.", "###"),
+    "J": ("..#", "..#", "..#", "#.#", ".#."),
+    "K": ("#.#", "#.#", "##.", "#.#", "#.#"),
+    "L": ("#..", "#..", "#..", "#..", "###"),
+    "M": ("#.#", "###", "###", "#.#", "#.#"),
+    "N": ("##.", "#.#", "#.#", "#.#", "#.#"),
+    "O": (".#.", "#.#", "#.#", "#.#", ".#."),
+    "P": ("##.", "#.#", "##.", "#..", "#.."),
+    "Q": (".#.", "#.#", "#.#", "##.", ".##"),
+    "R": ("##.", "#.#", "##.", "#.#", "#.#"),
+    "S": (".##", "#..", ".#.", "..#", "##."),
+    "T": ("###", ".#.", ".#.", ".#.", ".#."),
+    "U": ("#.#", "#.#", "#.#", "#.#", ".##"),
+    "V": ("#.#", "#.#", "#.#", "#.#", ".#."),
+    "W": ("#.#", "#.#", "###", "###", "#.#"),
+    "X": ("#.#", "#.#", ".#.", "#.#", "#.#"),
+    "Y": ("#.#", "#.#", ".#.", ".#.", ".#."),
+    "Z": ("###", "..#", ".#.", "#..", "###"),
+    "0": ("###", "#.#", "#.#", "#.#", "###"),
+    "1": (".#.", "##.", ".#.", ".#.", "###"),
+    "2": ("##.", "..#", ".#.", "#..", "###"),
+    "3": ("###", "..#", ".##", "..#", "###"),
+    "4": ("#.#", "#.#", "###", "..#", "..#"),
+    "5": ("###", "#..", "##.", "..#", "##."),
+    "6": (".##", "#..", "###", "#.#", "###"),
+    "7": ("###", "..#", ".#.", ".#.", ".#."),
+    "8": ("###", "#.#", "###", "#.#", "###"),
+    "9": ("###", "#.#", "###", "..#", "##."),
+    ".": ("...", "...", "...", "...", ".#."),
+    ",": ("...", "...", "...", ".#.", "#.."),
+    ":": ("...", ".#.", "...", ".#.", "..."),
+    "-": ("...", "...", "###", "...", "..."),
+    "/": ("..#", "..#", ".#.", "#..", "#.."),
+    "%": ("#.#", "..#", ".#.", "#..", "#.#"),
+    "+": ("...", ".#.", "###", ".#.", "..."),
+    "=": ("...", "###", "...", "###", "..."),
+    "*": ("...", "#.#", ".#.", "#.#", "..."),
+    "<": ("..#", ".#.", "#..", ".#.", "..#"),
+    ">": ("#..", ".#.", "..#", ".#.", "#.."),
+    "(": (".#.", "#..", "#..", "#..", ".#."),
+    ")": (".#.", "..#", "..#", "..#", ".#."),
+    "#": ("#.#", "###", "#.#", "###", "#.#"),
+    "!": (".#.", ".#.", ".#.", "...", ".#."),
+    "?": ("##.", "..#", ".#.", "...", ".#."),
+}
+
+
+class HoloCanvas(MagiCanvas):
+    """256x224 indexed canvas for the holo console and globe furniture."""
+
+    def micro(self, x: int, y: int, s: str, c: int) -> None:
+        for i, ch in enumerate(s):
+            rows = HOLO_TINY.get(ch)
+            if rows is None:
+                continue
+            ox = x + i * 4
+            for gy, row in enumerate(rows):
+                for gx, bit in enumerate(row):
+                    if bit == "#":
+                        self.put(ox + gx, y + gy, c)
+
+    def micro_right(self, xr: int, y: int, s: str, c: int) -> None:
+        self.micro(xr - len(s) * 4, y, s, c)
+
+    def text5(self, x: int, y: int, s: str, c: int) -> None:
+        for i, ch in enumerate(s):
+            grid = MAGI_GLYPHS.get(ch)
+            if grid is None:
+                continue
+            ox = x + i * 5
+            for gy in range(8):
+                for gx in range(1, 6):
+                    if grid[gy][gx]:
+                        self.put(ox + gx - 1, y + gy, c)
+
+    def text5_right(self, xr: int, y: int, s: str, c: int) -> None:
+        self.text5(xr - len(s) * 5, y, s, c)
+
+    def scanfill(self, x0: int, y0: int, x1: int, y1: int,
+                 base: int = 1, line: int = 2, period: int = 4) -> None:
+        for y in range(max(0, y0), min(self.h, y1 + 1)):
+            self.hline(x0, x1, y, line if (y % period) == 0 else base)
+
+    def holo_panel(self, x0: int, y0: int, x1: int, y1: int, title: str,
+                   right: str | None = None) -> None:
+        self.scanfill(x0 + 1, y0 + 1, x1 - 1, y1 - 1, 1, 2, 4)
+        self.frame(x0, y0, x1, y1, 6)
+        self.frame(x0 + 1, y0 + 1, x1 - 1, y1 - 1, 3)
+        self.rect(x0 + 2, y0 + 2, x1 - 2, y0 + 9, 2)
+        self.hazard(x0 + 3, y0 + 3, x0 + 10, y0 + 9, period=4)
+        self.micro(x0 + 14, y0 + 4, title, 11)
+        if right:
+            self.micro_right(x1 - 5, y0 + 4, right, 8)
+        self.hline(x0 + 2, x1 - 2, y0 + 10, 4)
+
+    def checkbox(self, x: int, y: int, on: bool = True) -> None:
+        self.frame(x, y, x + 7, y + 7, 7)
+        self.rect(x + 1, y + 1, x + 6, y + 6, 1)
+        if on:
+            for (dx, dy) in ((2, 4), (2, 5), (3, 5), (4, 4), (4, 3),
+                             (5, 3), (5, 2), (6, 2)):
+                self.put(x + dx, y + dy, 9)
+
+    def slider(self, x0: int, x1: int, y: int) -> None:
+        self.hline(x0, x1, y, 4)
+        self.hline(x0, x1, y + 1, 3)
+        for x in range(x0, x1 + 1, 18):
+            self.vline(x, y - 1, y + 2, 5)
+
+
+def build_holo_bg1() -> HoloCanvas:
+    """The static NERV console: header, panels, gauges, readouts, footer.
+
+    The side panels are deliberately narrow (60 px) so the globe window is
+    135 px wide, which is close to the reference: the orbital rings may travel
+    well past the sphere and get clipped by the console, exactly as in the
+    concept art.
+    """
+    c = HoloCanvas()
+    c.rect(0, 0, HOLO_W - 1, HOLO_H - 1, 1)
+
+    # -- header -------------------------------------------------------------
+    c.rect(0, 0, HOLO_W - 1, 2, 7)
+    c.hline(0, HOLO_W - 1, 24, 6)
+    c.hline(0, HOLO_W - 1, 25, 3)
+    # Scene-name HUD sprites live at x=8..96, y=8..15.
+    c.rect(104, 5, 170, 16, 2)
+    c.hazard(105, 6, 169, 15, period=6)
+    c.frame(104, 5, 170, 16, 7)
+    c.micro(116, 8, "NERV-GLOBAL", 12)
+    c.rect(174, 5, 251, 20, 1)
+    c.frame(174, 5, 251, 20, 6)
+    c.micro(178, 7, "GRID SCAN:", 8)
+    c.micro(178, 13, "ORBITAL MATRIX", 12)
+    c.micro(8, 18, "KII // TACTICAL ORBITAL DISPATCH", 6)
+
+    # -- left column --------------------------------------------------------
+    c.holo_panel(0, 27, 59, 90, "ORBIT GAUGE")
+    c.micro(4, 38, "ROTATION", 6)
+    c.micro_right(56, 38, "SPD", 11)
+    c.slider(6, 48, 45)
+    c.micro(4, 52, "DENSITY", 6)
+    c.micro_right(56, 52, "10 LN", 11)
+    c.slider(6, 48, 59)
+    c.micro(4, 66, "SCALE", 6)
+    c.micro_right(56, 66, "18%", 11)
+    c.slider(6, 48, 73)
+    c.hline(2, 57, 79, 4)
+    c.micro(4, 81, "ALT 42", 8)
+    c.micro_right(56, 81, "INC 53", 8)
+
+    c.holo_panel(0, 92, 59, 160, "HOLO LAYERS")
+    for i, label in enumerate(("LAT/LONG", "ATMOS RINGS",
+                               "SAT ORBITS", "LAND MASS")):
+        y = 108 + i * 8
+        c.micro(4, y, label, 9)
+        c.checkbox(48, y - 1, True)
+    c.hline(2, 57, 141, 4)
+    c.micro(4, 145, "HOLO CORE", 8)
+    c.micro(4, 151, "PHASE LOCK", 6)
+    c.micro_right(56, 151, "OK", 15)
+
+    c.holo_panel(0, 162, 59, 198, "DEFENSE")
+    c.frame(4, 176, 55, 193, 7)
+    c.rect(5, 177, 54, 192, 1)
+    c.micro(8, 179, "DEF STATUS", 6)
+    c.text5(8, 185, "ACTIVE", 9)
+
+    # -- right-hand side is left free: the globe owns it ---------------------
+
+    # -- globe window (the readouts float over its top corners) -------------
+    gx0, gy0, gx1, gy1 = HOLO_WINDOW
+    c.rect(gx0, gy0, gx1, gy1, 0)
+    c.frame(gx0, gy0, gx1, gy1, 3)
+    for (cx, cy, dx, dy) in ((gx0, gy0, 1, 1), (gx1, gy1, -1, -1),
+                             (gx1, gy0, -1, 1), (gx0, gy1, 1, -1)):
+        for k in range(5):
+            c.put(cx + dx * k, cy, 8)
+            c.put(cx, cy + dy * k, 8)
+
+    # -- floating centre readouts -------------------------------------------
+    c.rect(62, 29, 136, 47, 1)
+    c.frame(62, 29, 136, 47, 6)
+    c.micro(64, 31, "LAT", 6)
+    c.text5(80, 31, "35.6762 N", 12)
+    c.micro(64, 40, "LON", 6)
+    c.text5(80, 40, "139.6503 E", 11)
+    c.rect(210, 29, 253, 47, 1)
+    c.frame(210, 29, 253, 47, 6)
+    c.micro(212, 31, "TGT TOKYO", 8)
+    c.micro(212, 40, "MAGI SYNC", 15)
+
+    # -- spectrum -----------------------------------------------------------
+    c.frame(60, 177, 254, 198, 6)
+    c.rect(61, 178, 253, 197, 1)
+    c.micro(64, 179, "RESONANCE SPECTRUM", 8)
+    c.micro_right(250, 179, "440.0HZ", 12)
+    c.rect(64, 184, 247, 191, 2)
+    c.hline(64, 247, 192, 3)
+    c.micro(64, 193, "LOW", 6)
+    c.micro(128, 193, "MID", 6)
+    c.micro(192, 193, "HIGH", 6)
+
+    # -- footer -------------------------------------------------------------
+    c.hline(0, HOLO_W - 1, 199, 6)
+    c.rect(0, 200, HOLO_W - 1, HOLO_H - 1, 1)
+    c.micro(6, 205, "NERV CENTRAL DOGMA", 9)
+    c.micro(82, 205, "STRATEGIC COMMAND", 12)
+    c.micro(158, 205, "SYS.HOLO.v3.5", 6)
+    c.micro(214, 205, "16:24:20", 11)
+    c.hazard(6, 213, 34, 220, period=4)
+    c.micro(40, 214, "TOKYO-3 GEO-FRONT", 8)
+    c.micro_right(250, 214, "MODE 1 / 4BPP", 5)
+    return c
+
+
+# ---------------------------------------------------------------------------
+# Holo Planet: globe furniture, dot matrix frames and animated BG2 cells
+# ---------------------------------------------------------------------------
+def holo_rot(x: float, y: float, z: float, pitch: float, roll: float,
+             yaw: float) -> tuple[float, float, float]:
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    y, z = y * cp - z * sp, y * sp + z * cp
+    cr, sr = math.cos(roll), math.sin(roll)
+    x, y = x * cr - y * sr, x * sr + y * cr
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    return x * cy + z * sy, y, -x * sy + z * cy
+
+
+def holo_project(x: float, y: float, z: float) -> tuple[float, float, float]:
+    s = HOLO_FOV / (HOLO_FOV + z * HOLO_R)
+    return HOLO_CX + x * HOLO_R * s, HOLO_CY + y * HOLO_R * s, z
+
+
+def holo_ring_point(ring: tuple[float, float, float, float],
+                    theta: float) -> tuple[float, float, float]:
+    radius, dp, dr, dy = ring
+    return holo_rot(radius * math.cos(theta), 0.0, radius * math.sin(theta),
+                    HOLO_PITCH + dp, HOLO_ROLL + dr, dy)
+
+
+def build_holo_bg2() -> HoloCanvas:
+    """Static globe furniture: limb, surface parallels and orbital rings.
+
+    The meridians are not painted here: they are the rotating sprite dots, so
+    the latitude parallels stay put under a yaw spin, exactly as they should.
+    """
+    c = HoloCanvas()
+    x0, y0, x1, y1 = HOLO_WINDOW
+
+    def put(x: float, y: float, col: int) -> None:
+        px, py = int(round(x)), int(round(y))
+        if x0 <= px <= x1 and y0 <= py <= y1:
+            c.put(px, py, col)
+
+    # soft outer glow: two dotted circles just outside the limb
+    for radius, col, stride in ((48.5, 4, 4), (50.5, 3, 5)):
+        n = int(2 * math.pi * radius * 2)
+        for j in range(n):
+            if j % stride:
+                continue
+            a = 2 * math.pi * j / n
+            put(HOLO_CX + radius * math.cos(a),
+                HOLO_CY + radius * math.sin(a), col)
+
+    # limb
+    for j in range(720):
+        a = 2 * math.pi * j / 720
+        put(HOLO_CX + HOLO_R * math.cos(a), HOLO_CY + HOLO_R * math.sin(a), 8)
+
+    # latitude parallels
+    for lat_deg in HOLO_PARALLELS:
+        lat = math.radians(lat_deg)
+        cl, sl = math.cos(lat), math.sin(lat)
+        for j in range(320):
+            lon = 2 * math.pi * j / 320
+            p = holo_rot(cl * math.cos(lon), sl, cl * math.sin(lon),
+                         HOLO_PITCH, HOLO_ROLL, 0.0)
+            px, py, pz = holo_project(*p)
+            if lat_deg == 0:
+                col = 10 if pz < 0 else 5
+            else:
+                col = 7 if pz < 0 else 3
+            put(px, py, col)
+
+    # orbital rings, drawn as a beaded line
+    for ring in HOLO_RINGS:
+        for j in range(360):
+            if j % 3:
+                continue
+            a = 2 * math.pi * j / 360
+            px, py, pz = holo_project(*holo_ring_point(ring, a))
+            put(px, py, 9 if pz < 0 else 5)
+
+    # north-pole tick
+    px, py, _ = holo_project(*holo_rot(0.0, -1.0, 0.0, HOLO_PITCH, HOLO_ROLL, 0.0))
+    for d in (-2, -1, 1, 2):
+        put(px + d, py, 10)
+        put(px, py + d, 10)
+    return c
+
+
+def holo_dyn_tiles() -> list[list[list[int]]]:
+    """BG2 high-priority overlay tiles, in a fixed order.
+
+    0..7   vertical fill levels 1..8   (spectrum bars)
+    8      gauge thumb
+    9      beacon dot
+    """
+    out: list[list[list[int]]] = []
+    for lv in range(1, 9):
+        g = [[0] * 8 for _ in range(8)]
+        top = 8 - lv
+        for y in range(top, 8):
+            for x in range(1, 7):
+                g[y][x] = 8 if y < 7 else 7
+        if lv < 8:
+            for x in range(1, 7):
+                g[top][x] = 10
+        out.append(g)
+    g = [[0] * 8 for _ in range(8)]
+    for y in range(4, 8):
+        for x in range(2, 6):
+            g[y][x] = 9 if 3 <= x <= 4 else 7
+    out.append(g)
+    g = [[0] * 8 for _ in range(8)]
+    for y in range(2, 6):
+        for x in range(2, 6):
+            g[y][x] = 12
+    for y in range(3, 5):
+        for x in range(3, 5):
+            g[y][x] = 10
+    out.append(g)
+    return out
+
+
+def holo_obj_tiles() -> dict[int, list[str]]:
+    """New OBJ dot tiles for the globe surface."""
+    return {
+        HOLO_DOT4: [
+            "........",
+            "........",
+            "..1111..",
+            "..1331..",
+            "..1331..",
+            "..1111..",
+            "........",
+            "........",
+        ],
+        HOLO_DOT3: [
+            "........",
+            "........",
+            "..111...",
+            "..131...",
+            "..111...",
+            "........",
+            "........",
+            "........",
+        ],
+        HOLO_DOT2: [
+            "........",
+            "........",
+            "........",
+            "...11...",
+            "...11...",
+            "........",
+            "........",
+            "........",
+        ],
+        HOLO_DOT2D: [
+            "........",
+            "........",
+            "........",
+            "...22...",
+            "...22...",
+            "........",
+            "........",
+            "........",
+        ],
+        HOLO_SAT: [
+            ".111111.",
+            "1......1",
+            "1..33..1",
+            "1..33..1",
+            "1......1",
+            "1......1",
+            ".111111.",
+            "........",
+        ],
+    }
+
+
+HOLO_GAUGE_CELLS = ((1, 5), (2, 5), (3, 5), (4, 5), (5, 5))
+HOLO_DYN_CELLS = (
+    [(HOLO_SPECTRUM_X0 + i, HOLO_SPECTRUM_ROW)
+     for i in range(HOLO_SPECTRUM_BARS)]
+    + list(HOLO_GAUGE_CELLS)
+    + [(30, 1), (5, 23)]
+)
+
+
+def holo_cell(canvas: HoloCanvas, tx: int, ty: int) -> tuple:
+    return tuple(tuple(canvas.px[ty * 8 + y][tx * 8 + x] for x in range(8))
+                 for y in range(8))
+
+
+def holo_pack_bg1(canvas: HoloCanvas) -> tuple[list[list[list[int]]], list[int]]:
+    blank = tuple(tuple([0] * 8) for _ in range(8))
+    tiles: list[list[list[int]]] = [[list(r) for r in blank]]
+    lookup = {blank: 0}
+    entries = [0] * 1024
+    for ty in range(32):
+        for tx in range(32):
+            g = holo_cell(canvas, tx, ty) if ty < HOLO_H // 8 else blank
+            idx = lookup.get(g)
+            if idx is None:
+                if len(tiles) >= 512:
+                    raise ValueError(f"HOLO BG1 tileset overflows its 512-tile area ({len(tiles)})")
+                idx = len(tiles)
+                lookup[g] = idx
+                tiles.append([list(r) for r in g])
+            entries[ty * 32 + tx] = idx | (HOLO_UI_PAL << 10)
+    return tiles, entries
+
+
+def holo_pack_bg2(canvas: HoloCanvas,
+                  dyn: list[list[list[int]]]) -> tuple[list[list[list[int]]], list[int], int]:
+    blank = tuple(tuple([0] * 8) for _ in range(8))
+    tiles: list[list[list[int]]] = [[list(r) for r in blank]]
+    lookup = {blank: 0}
+    entries = [0] * 1024
+    x0, y0, x1, y1 = HOLO_WINDOW
+    for ty in range(y0 // 8, y1 // 8 + 1):
+        for tx in range(x0 // 8, x1 // 8 + 1):
+            g = holo_cell(canvas, tx, ty)
+            if g == blank:
+                continue
+            idx = lookup.get(g)
+            if idx is None:
+                idx = len(tiles)
+                lookup[g] = idx
+                tiles.append([list(r) for r in g])
+            entries[ty * 32 + tx] = idx
+    dyn_base = len(tiles)
+    for g in dyn:
+        tiles.append([list(r) for r in g])
+    for (cx, cy) in HOLO_DYN_CELLS:
+        entries[cy * 32 + cx] = 0x2000      # blank tile, high priority
+    if len(tiles) > 384:
+        raise ValueError(f"HOLO BG2 tileset overflows its 384-tile area ({len(tiles)})")
+    return tiles, entries, dyn_base
+
+
+def holo_spectrum_levels(phase: int) -> list[int]:
+    t = (phase % HOLO_PHASES) / HOLO_PHASES
+    out = []
+    for i in range(HOLO_SPECTRUM_BARS):
+        v = (0.45
+             + 0.30 * math.sin(2 * math.pi * 2 * t + i * 0.70)
+             + 0.18 * math.sin(2 * math.pi * 3 * t - i * 1.30)
+             + 0.12 * math.sin(2 * math.pi * 5 * t + i * 2.10))
+        out.append(max(0, min(8, int(round(v * 8)))))
+    return out
+
+
+def holo_dot_choice(z: float, kind: str, hot: bool) -> tuple[int, int, int]:
+    """(tile, obj palette, top-left offset) for a surface dot at depth z."""
+    if z < -0.45:
+        return (HOLO_DOT4 if hot else HOLO_DOT3), (7 if hot else 5), 4
+    if z < 0.0:
+        return (HOLO_DOT3 if hot else HOLO_DOT2), (7 if hot else 5), 4
+    return HOLO_DOT2D, 5, 4
+
+
+def holo_frames() -> list[bytes]:
+    """Two complementary OAM frames per rotation phase (persistence of vision).
+
+    Each frame carries 4 satellite markers, the two satellite labels, 60
+    meridian dots and 20 surface particles.  The next frame carries the other
+    half of the dots, so flickering the pair doubles the apparent sprite count.
+    """
+    rnd = random.Random(2027)
+    particles = []
+    for i in range(HOLO_PARTICLES):
+        phi = math.acos(-1.0 + (2.0 * i + 1.0) / HOLO_PARTICLES)
+        theta = math.sqrt(HOLO_PARTICLES * math.pi) * phi
+        particles.append((math.cos(theta) * math.sin(phi),
+                          math.sin(theta) * math.sin(phi),
+                          math.cos(phi), rnd.random()))
+    frames: list[bytes] = []
+    x0, y0, x1, y1 = HOLO_WINDOW
+    for slot in range(HOLO_PHASES * 2):
+        phase = slot // 2
+        side = slot & 1
+        yaw = 2.0 * math.pi * phase / HOLO_PHASES
+        fr = Frame()
+
+        # Satellites and labels are present in both fields, so the text never
+        # flickers; only the dot matrix is split between them.
+        for ri, direction, offset, label in HOLO_SATELLITES:
+            theta = 2.0 * math.pi * phase / HOLO_PHASES * direction + offset
+            px, py, _ = holo_project(*holo_ring_point(HOLO_RINGS[ri], theta))
+            px, py = int(round(px)), int(round(py))
+            if not (x0 + 8 <= px <= x1 - 8 and 52 <= py <= y1 - 8):
+                continue
+            fr.add(px - 4, py - 4, HOLO_SAT, 7)
+            if label:
+                lx = px + 7
+                if lx + len(label) * 6 > x1 - 2:
+                    lx = px - 7 - len(label) * 6
+                lx = max(x0 + 2, min(x1 - 2 - len(label) * 6, lx))
+                ly = max(52, min(y1 - 10, py - 4))
+                for k, ch in enumerate(label):
+                    fr.add(lx + k * 6, ly, ord(ch) - 32, 5)
+
+        dots: list[tuple[float, int, int, int, int, int]] = []
+        for mi in range(HOLO_MERIDIANS):
+            # Whole meridians alternate between the two fields: each field then
+            # carries six continuous dotted meridians instead of half the dots
+            # of twelve, which reads as a proper graticule under POV.
+            if (mi & 1) != side:
+                continue
+            lon = 2.0 * math.pi * mi / HOLO_MERIDIANS
+            for lat_deg in HOLO_MERIDIAN_LATS:
+                lat = math.radians(lat_deg)
+                p = holo_rot(math.cos(lat) * math.cos(lon), math.sin(lat),
+                             math.cos(lat) * math.sin(lon),
+                             HOLO_PITCH, HOLO_ROLL, yaw)
+                px, py, pz = holo_project(*p)
+                tile, pal, off = holo_dot_choice(pz, "grid", False)
+                dots.append((pz, int(round(px)), int(round(py)), tile, pal, off))
+
+        for i, (bx, by, bz, intensity) in enumerate(particles):
+            if (i & 1) != side:
+                continue
+            p = holo_rot(bx, by, bz, HOLO_PITCH, HOLO_ROLL, yaw)
+            px, py, pz = holo_project(*p)
+            tile, pal, off = holo_dot_choice(pz, "particle", intensity > 0.82)
+            dots.append((pz, int(round(px)), int(round(py)), tile, pal, off))
+
+        dots.sort(key=lambda d: d[0])       # back first, front drawn on top
+        for _, px, py, tile, pal, off in dots:
+            if not (x0 <= px <= x1 and y0 <= py <= y1):
+                continue
+            if 62 <= px <= 136 and 29 <= py <= 47:      # LAT/LON box
+                continue
+            if 210 <= px <= 253 and 29 <= py <= 47:     # target box
+                continue
+            fr.add(px - off, py - off, tile, pal)
+
+        while len(fr.sprites) < HOLO_SLOTS:
+            fr.add(0, 0xF1, 0, 0)
+        frames.append(fr.data())
+    return frames
+
+
+def holo_updates(dyn_base: int) -> tuple[list[bytes], list[int]]:
+    """Per-phase BG2 map writes for the spectrum and the beacon dots."""
+    v_tile = lambda lv: 0 if lv <= 0 else dyn_base + (lv - 1)
+    beacon = dyn_base + 9
+    prev: dict[int, int] = {}
+    blobs: list[bytes] = []
+    counts: list[int] = []
+    for phase in range(HOLO_PHASES):
+        upd: list[tuple[int, int]] = []
+        for i, lv in enumerate(holo_spectrum_levels(phase)):
+            addr = (HOLO_BG2_SCREEN + HOLO_SPECTRUM_ROW * 32
+                    + HOLO_SPECTRUM_X0 + i)
+            val = v_tile(lv) | 0x2000
+            if prev.get(addr, 0x2000) != val:
+                prev[addr] = val
+                upd.append((addr, val))
+        on = (phase // 15) % 2 == 0
+        for (cx, cy) in ((30, 1), (5, 23)):
+            addr = HOLO_BG2_SCREEN + cy * 32 + cx
+            val = (beacon if on else 0) | 0x2000
+            if prev.get(addr, 0x2000) != val:
+                prev[addr] = val
+                upd.append((addr, val))
+        if len(upd) > 64:
+            raise ValueError(f"HOLO phase {phase} needs {len(upd)} writes")
+        counts.append(len(upd))
+        blob = bytearray([len(upd)])
+        for addr, value in upd:
+            blob += bytes((addr & 0xFF, addr >> 8, value & 0xFF, value >> 8))
+        blobs.append(bytes(blob))
+    return blobs, counts
+
+
+def holo_gauge_lists(dyn_base: int) -> list[bytes]:
+    """Five small BG2 lists that move the rotation-speed thumb."""
+    thumb = dyn_base + 8
+    out = []
+    for speed in range(5):
+        upd = []
+        for i, (cx, cy) in enumerate(HOLO_GAUGE_CELLS):
+            addr = HOLO_BG2_SCREEN + cy * 32 + cx
+            upd.append((addr, (thumb if i == speed else 0) | 0x2000))
+        blob = bytearray([len(upd)])
+        for addr, value in upd:
+            blob += bytes((addr & 0xFF, addr >> 8, value & 0xFF, value >> 8))
+        out.append(bytes(blob))
+    return out
+
+
+class HoloAssets:
+    def __init__(self) -> None:
+        self.bg1 = build_holo_bg1()
+        self.bg2 = build_holo_bg2()
+        self.dyn = holo_dyn_tiles()
+        self.bg1_tiles, self.bg1_map = holo_pack_bg1(self.bg1)
+        self.bg2_tiles, self.bg2_map, self.dyn_base = holo_pack_bg2(self.bg2, self.dyn)
+        self.frames = holo_frames()
+        self.updates, self.update_counts = holo_updates(self.dyn_base)
+        self.gauges = holo_gauge_lists(self.dyn_base)
+        print(f"HOLO: BG1 {len(self.bg1_tiles)} tiles, BG2 {len(self.bg2_tiles)} tiles "
+              f"(dyn base {self.dyn_base}), updates "
+              f"{min(self.update_counts)}..{max(self.update_counts)} per phase, "
+              f"{len(self.frames)} OAM frames")
+
+    def bg1_tile_bytes(self) -> bytes:
+        return b"".join(magi_tile_4bpp(g) for g in self.bg1_tiles)
+
+    def bg2_tile_bytes(self) -> bytes:
+        return b"".join(magi_tile_4bpp(g) for g in self.bg2_tiles)
+
+    @staticmethod
+    def map_bytes(entries: list[int]) -> bytes:
+        return MagiAssets.map_bytes(entries)
+
+
+# ---------------------------------------------------------------------------
 # Selector tilemaps
 # ---------------------------------------------------------------------------
 SCENE_NAMES = ["HOLO PLANET", "PULSE ANALYZER", "VECTOR CITY", "ATOMIC",
@@ -2019,6 +2658,7 @@ def main() -> None:
     themes_bg = [build_bg_palette(t) for t in range(4)]
     themes_neon = [build_neon_bg_palette(t) for t in range(4)]
     themes_magi = [build_magi_palette(t) for t in range(4)]
+    themes_holo = [build_holo_palette(t) for t in range(4)]
     themes_obj = [[c for pal in build_obj_palettes(t) for c in pal] for t in range(4)]
     extra_tiles = build_extra_tiles()
 
@@ -2027,20 +2667,28 @@ def main() -> None:
           f"updates {min(magi.update_counts)}..{max(magi.update_counts)} per frame "
           f"({sum(magi.update_counts)} total)")
 
-    bg_builders = [make_planet_bg, None, make_city_bg, make_atomic_bg,
+    holo = HoloAssets()
+
+    bg_builders = [None, None, make_city_bg, make_atomic_bg,
                    make_lissajous_bg]
-    frame_builders = [holo_frames, None, city_frames, atomic_frames,
+    frame_builders = [None, None, city_frames, atomic_frames,
                       None, neon_city_frames]
     bg_data = [build_m7(bg()) if bg else [] for bg in bg_builders]
     bg_data.append(build_m7_plane(make_neon_city_plane()))
     frame_data = [builder() if builder else None for builder in frame_builders]
+    frame_data[0] = holo.frames
     frame_data[1] = magi.frames
     for scene, frames in enumerate(frame_data):
         if frames is None:
             continue
-        want = MAGI_FRAMES if scene == 1 else FRAME_COUNT
-        if scene == 5:
+        if scene == 0:
+            want = HOLO_PHASES * 2
+        elif scene == 1:
+            want = MAGI_FRAMES
+        elif scene == 5:
             want = len(frames)
+        else:
+            want = FRAME_COUNT
         if len(frames) != want:
             raise ValueError(f"scene {scene} has {len(frames)} frames, expected {want}")
         for i, f in enumerate(frames):
@@ -2082,6 +2730,17 @@ def main() -> None:
     alloc.add("MagiScroll", magi.scrolls)
     for fi, blob in enumerate(magi.updates):
         alloc.add(f"MagiUpdate{fi}", blob)
+
+    # Holo Planet console and globe.  The 240 OAM frames are allocated by the
+    # generic frame loop below; everything else fits inside one bank.
+    alloc.add("HoloBg1Tiles", holo.bg1_tile_bytes())
+    alloc.add("HoloBg1Map", HoloAssets.map_bytes(holo.bg1_map))
+    alloc.add("HoloBg2Tiles", holo.bg2_tile_bytes())
+    alloc.add("HoloBg2Map", HoloAssets.map_bytes(holo.bg2_map))
+    for pi, blob in enumerate(holo.updates):
+        alloc.add(f"HoloUpdate{pi}", blob)
+    for si, blob in enumerate(holo.gauges):
+        alloc.add(f"HoloGauge{si}", blob)
 
     frame_table_labels = []
     for scene in range(SCENE_COUNT):
@@ -2149,6 +2808,16 @@ def main() -> None:
     sh.append(f".DEFINE MAGI_BG1_MAP ${MAGI_BG1_MAP_ADDR:04X}")
     sh.append(f".DEFINE MAGI_BG2_MAP ${MAGI_BG2_MAP_ADDR:04X}")
     sh.append(f".DEFINE MAGI_BG3_MAP ${MAGI_BG3_MAP_ADDR:04X}")
+    holo_bg1_bytes = len(holo.bg1_tiles) * 32
+    holo_bg2_bytes = len(holo.bg2_tiles) * 32
+    sh.append(f".DEFINE HOLO_PHASES {HOLO_PHASES}")
+    sh.append(f".DEFINE HOLO_SLOTS {HOLO_SLOTS}")
+    sh.append(f".DEFINE HOLO_BG1_TILE_BYTES_LO ${holo_bg1_bytes & 0xFF:02X}")
+    sh.append(f".DEFINE HOLO_BG1_TILE_BYTES_HI ${holo_bg1_bytes >> 8:02X}")
+    sh.append(f".DEFINE HOLO_BG2_TILE_BYTES_LO ${holo_bg2_bytes & 0xFF:02X}")
+    sh.append(f".DEFINE HOLO_BG2_TILE_BYTES_HI ${holo_bg2_bytes >> 8:02X}")
+    sh.append(f".DEFINE HOLO_BG1_MAP ${HOLO_BG1_SCREEN:04X}")
+    sh.append(f".DEFINE HOLO_BG2_MAP ${HOLO_BG2_SCREEN:04X}")
     sh.append("")
 
     # Selector maps: index = scene * 2 + party
@@ -2191,6 +2860,16 @@ def main() -> None:
     sh.append("  .DW " + ", ".join(f"ThemeBgMagi{t}" for t in range(4)))
     sh.append("ThemeBgMagiBanks:")
     sh.append("  .DB " + ", ".join(f":ThemeBgMagi{t}" for t in range(4)))
+    for t in range(4):
+        sh.append(f"ThemeBgHolo{t}:")
+        sh.append(db_rows(palette_bytes(themes_holo[t])))
+        sh.append("")
+    sh.append("ThemeBgHoloPtrs:")
+    sh.append("  .DW " + ", ".join(f"ThemeBgHolo{t}" for t in range(4)))
+    sh.append("ThemeBgHoloBanks:")
+    sh.append("  .DB " + ", ".join(f":ThemeBgHolo{t}" for t in range(4)))
+    sh.append("HoloRateSteps:")
+    sh.append("  .DW $0000, $0040, $0080, $0100, $0180")
     sh.append("")
     sh.append("NeonVTablePtrs:")
     for i in range(NEON_PHASES):
@@ -2223,6 +2902,14 @@ def main() -> None:
             sh.append(f"  .DB ${MAGI_FRAMES:02X}, $00, $08, $00, $00, $00")
             sh.append("  .DW $0000")
             sh.append(f"  .DW SceneNameTable+{scene * 16}")
+        elif scene == 0:
+            # Holo console: tiled HUD + 240 OAM frames (120 phases x 2 POV
+            # fields).  Flag $10 selects the holo update path.
+            sh.append("  .DB $00, $00, $00")
+            sh.append("  " + ptr_bytes(frame_table_labels[0]))
+            sh.append(f"  .DB ${HOLO_PHASES * 2:02X}, $00, $10, $00, $00, $00")
+            sh.append("  .DW $0000")
+            sh.append(f"  .DW SceneNameTable+{scene * 16}")
         else:
             frame_count = NEON_FRAMES if scene == 5 else FRAME_COUNT
             scroll = 188 if scene == 2 else 0
@@ -2251,6 +2938,16 @@ def main() -> None:
     sh.append("MagiUpdatePtrs:")
     for fi in range(MAGI_FRAMES):
         sh.append("  " + ptr_bytes(f"MagiUpdate{fi}"))
+    sh.append("")
+
+    # Per-phase BG2 write lists and the five speed-gauge lists for Holo.
+    sh.append("HoloUpdatePtrs:")
+    for fi in range(HOLO_PHASES):
+        sh.append("  " + ptr_bytes(f"HoloUpdate{fi}"))
+    sh.append("")
+    sh.append("HoloGaugePtrs:")
+    for si in range(5):
+        sh.append("  " + ptr_bytes(f"HoloGauge{si}"))
     sh.append("")
 
     # HDMA table for Vector City: one 2-byte M7VOFS value per scanline.

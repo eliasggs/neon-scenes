@@ -145,6 +145,11 @@
 .DEFINE magiCount     $7B
 .DEFINE magiPending   $7C
 .DEFINE magiTemp      $7D   ; 16-bit scratch used only inside the NMI
+.DEFINE holoAcc       $7F   ; 16-bit phase accumulator, 1/256 phase units
+.DEFINE holoRate      $81   ; 0..4, D-pad speed setting
+.DEFINE holoGauge     $82   ; set when the speed gauge needs redrawing
+.DEFINE holoSet       $83   ; POV field for this frame (0/1)
+.DEFINE holoPhase     $84   ; 0..HOLO_PHASES-1
 
 ; -----------------------------------------------------------------------------
 ; Work RAM
@@ -547,6 +552,7 @@ UpAction:
   lda gameParty
   bne UpBrightness
   lda sceneIndex
+  beq UpHoloRate
   cmp #4
   beq UpFreqB
 UpBrightness:
@@ -558,6 +564,15 @@ UpBrightness:
   lda #1
   sta hudDirty
 UpDone:
+  rts
+UpHoloRate:
+  lda holoRate
+  cmp #4
+  beq UpDone
+  inc a
+  sta holoRate
+  lda #1
+  sta holoGauge
   rts
 UpFreqB:
   lda freqB
@@ -572,6 +587,7 @@ DownAction:
   lda gameParty
   bne DownBrightness
   lda sceneIndex
+  beq DownHoloRate
   cmp #4
   beq DownFreqB
 DownBrightness:
@@ -582,6 +598,14 @@ DownBrightness:
   lda #1
   sta hudDirty
 DownDone:
+  rts
+DownHoloRate:
+  lda holoRate
+  beq DownDone
+  dec a
+  sta holoRate
+  lda #1
+  sta holoGauge
   rts
 DownFreqB:
   lda freqB
@@ -682,12 +706,18 @@ StartScene:
   jsr LoadSceneDesc
 
   lda sceneFlags
+  and #$10
+  bne StartSceneHolo
+  lda sceneFlags
   and #$08
   bne StartSceneMagi
   lda sceneFlags
   and #$01
   bne StartSceneLiss
   jsr InitFrameScene
+  bra StartSceneDone
+StartSceneHolo:
+  jsr InitHoloScene
   bra StartSceneDone
 StartSceneMagi:
   jsr InitMagiScene
@@ -1044,6 +1074,123 @@ MagiVramUpload:
   sta $2116
   sep #$20
   jmp DmaBankToVram
+
+; =============================================================================
+;  Holo Planet: Mode 1 console with a POV dot-matrix globe
+;
+;  BG1 is the console (4bpp, char base 0, map $3800).  BG2 holds the static
+;  globe furniture at low priority (behind the console) and the animated
+;  spectrum/gauges/beacons at high priority over it (4bpp, char base $2000,
+;  map $3C00).  The planet surface is 240 precomputed OAM frames: 120 rotation
+;  phases, each with two complementary fields that are flickered so the globe
+;  shows twice the sprites the hardware can draw at once.
+; =============================================================================
+InitHoloScene:
+  lda #$02
+  sta $2101
+  lda #$80
+  sta $2115
+
+  ; BG1 console tiles -> word $0000.
+  lda #<HoloBg1Tiles.B
+  sta dmaSrc
+  lda #>HoloBg1Tiles.B
+  sta dmaSrc+1
+  lda #:HoloBg1Tiles.B
+  sta dmaBank
+  lda #HOLO_BG1_TILE_BYTES_LO.B
+  sta dmaSize
+  lda #HOLO_BG1_TILE_BYTES_HI.B
+  sta dmaSize+1
+  ldx #$0000
+  jsr MagiVramUpload
+
+  ; BG2 globe tiles -> word $2000.
+  lda #<HoloBg2Tiles.B
+  sta dmaSrc
+  lda #>HoloBg2Tiles.B
+  sta dmaSrc+1
+  lda #:HoloBg2Tiles.B
+  sta dmaBank
+  lda #HOLO_BG2_TILE_BYTES_LO.B
+  sta dmaSize
+  lda #HOLO_BG2_TILE_BYTES_HI.B
+  sta dmaSize+1
+  ldx #$2000
+  jsr MagiVramUpload
+
+  ; BG1 map -> word $3800.
+  lda #<HoloBg1Map.B
+  sta dmaSrc
+  lda #>HoloBg1Map.B
+  sta dmaSrc+1
+  lda #:HoloBg1Map.B
+  sta dmaBank
+  stz dmaSize
+  lda #$08
+  sta dmaSize+1
+  ldx #HOLO_BG1_MAP
+  jsr MagiVramUpload
+
+  ; BG2 map -> word $3C00.
+  lda #<HoloBg2Map.B
+  sta dmaSrc
+  lda #>HoloBg2Map.B
+  sta dmaSrc+1
+  lda #:HoloBg2Map.B
+  sta dmaBank
+  stz dmaSize
+  lda #$08
+  sta dmaSize+1
+  ldx #HOLO_BG2_MAP
+  jsr MagiVramUpload
+
+  ; Mode 1: BG1/BG2 4bpp, 8x8 tiles.
+  lda #$01
+  sta $2105
+  stz $2106
+  lda #$38              ; BG1 map $3800
+  sta $2107
+  lda #$3C              ; BG2 map $3C00
+  sta $2108
+  stz $2109
+  stz $210A
+  lda #$20              ; BG1 char $0000, BG2 char $2000
+  sta $210B
+  stz $210C
+  stz $210D
+  stz $210D
+  stz $210E
+  stz $210E
+  stz $210F
+  stz $210F
+  stz $2110
+  stz $2110
+  stz $2111
+  stz $2111
+  stz $2112
+  stz $2112
+  stz $211A
+  stz $2133
+  stz $2130
+  stz $2131
+
+  lda #$13              ; BG1 + BG2 + OBJ on the main screen
+  sta $212C
+  stz $212D
+
+  stz frameIndex
+  stz frameIndex+1
+  stz holoAcc
+  stz holoAcc+1
+  lda #2
+  sta holoRate
+  stz holoSet
+  stz holoPhase
+  lda #1
+  sta holoGauge
+  stz magiPending
+  rts
 
 ; A = 0 for 88x77 Lissajous, or the descriptor scale for precomputed scenes.
 SetMode7:
@@ -1409,6 +1556,9 @@ UpdateScene:
   lda paused
   bne UpdateSceneDone
   lda sceneFlags
+  and #$10
+  bne UpdateSceneHolo
+  lda sceneFlags
   and #$01
   bne UpdateSceneLiss
 
@@ -1467,6 +1617,90 @@ UpdateSceneLiss:
   lda #1
   sta oamDirty
 UpdateSceneDone:
+  rts
+
+; -----------------------------------------------------------------------------
+;  Holo Planet: advance the rotation phase and pick the right POV field.
+;
+;  Left/Right spin the globe by hand while held; Up/Down change the automatic
+;  speed (0..4).  The phase is a 16-bit accumulator in 1/256-phase units, so a
+;  slow auto-rotation can still update the frame at a steady rate.
+; -----------------------------------------------------------------------------
+UpdateSceneHolo:
+  jsr UpdateHoloScene
+  rts
+
+UpdateHoloScene:
+  lda gameParty
+  bne HoloAuto
+  lda buttons+1
+  and #$03              ; d-pad left/right (bits 1/0 of JOY1H)
+  beq HoloAuto
+  and #$02
+  beq HoloSpinRight
+  rep #$20
+  lda holoAcc
+  sec
+  sbc #$0100
+  bcs HoloSpinStore
+  clc
+  adc #(HOLO_PHASES*256)
+HoloSpinStore:
+  sta holoAcc
+  bra HoloAfterSpin
+HoloSpinRight:
+  rep #$20
+  lda holoAcc
+  clc
+  adc #$0100
+  cmp #(HOLO_PHASES*256)
+  bcc HoloSpinStore2
+  sec
+  sbc #(HOLO_PHASES*256)
+HoloSpinStore2:
+  sta holoAcc
+  bra HoloAfterSpin
+HoloAuto:
+  rep #$20
+  lda holoRate
+  and #$00FF
+  asl a
+  tax
+  lda.l HoloRateSteps,x
+  clc
+  adc holoAcc
+  cmp #(HOLO_PHASES*256)
+  bcc HoloAutoStore
+  sec
+  sbc #(HOLO_PHASES*256)
+HoloAutoStore:
+  sta holoAcc
+HoloAfterSpin:
+  rep #$20
+  lda holoAcc
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  sta tempAddr
+  sep #$20
+  lda tempAddr
+  sta holoPhase
+  lda frameCounter
+  and #$01
+  sta holoSet
+  lda holoPhase
+  asl a
+  ora holoSet
+  sta frameIndex
+  stz frameIndex+1
+  jsr QueueFrame
+  lda #1
+  sta magiPending
   rts
 
 ; Advance the Neon City floor by one table step.  Every table holds the whole
@@ -1667,6 +1901,8 @@ ApplyTheme:
   tax
   sep #$20
   lda sceneIndex
+  cmp #0
+  beq ApplyThemeHolo
   cmp #1
   beq ApplyThemeMagi
   cmp #5
@@ -1681,6 +1917,22 @@ ApplyTheme:
   lda.l ThemeBgBanks,x
   sta dmaBank
   bra ApplyThemeBgUpload
+ApplyThemeHolo:
+  ; The holo console uses CGRAM 0..15 only (one 16-colour BG palette).
+  lda.l ThemeBgHoloPtrs,x
+  sta dmaSrc
+  lda.l ThemeBgHoloPtrs+1,x
+  sta dmaSrc+1
+  txa
+  lsr a
+  tax
+  lda.l ThemeBgHoloBanks,x
+  sta dmaBank
+  lda #$20
+  sta dmaSize
+  stz dmaSize+1
+  jsr LoadPaletteBankCpu
+  bra ApplyThemeObj
 ApplyThemeMagi:
   ; The console owns CGRAM 0..63: eight BG3 heat ramps, then the BG1 and BG2
   ; 4bpp palettes.
@@ -2025,9 +2277,16 @@ NmiNoOam:
   lda magiPending
   beq NmiNoMagi
   lda sceneFlags
+  and #$10
+  bne NmiHoloList
+  lda sceneFlags
   and #$08
   beq NmiNoMagi
   jsr MagiNmiUpdate
+  bra NmiMagiDone
+NmiHoloList:
+  jsr HoloNmiUpdate
+NmiMagiDone:
   stz magiPending
 NmiNoMagi:
 
@@ -2085,15 +2344,20 @@ MagiNmiUpdate:
   sta magiPtr+1
   lda.l MagiUpdatePtrs+2,x
   sta magiPtr+2
+  jsr ApplyVramList
+  rts
 
+; Apply the write list pointed to by magiPtr: a byte count followed by
+; (VRAM word address, map entry) pairs.  VMAIN is left in 1-word increment.
+ApplyVramList:
   lda #$80
   sta $2115
   ldy #$0000
   lda [magiPtr],y
   sta magiCount
-  beq MagiNmiDone
+  beq ApplyVramListDone
   iny
-MagiNmiLoop:
+ApplyVramListLoop:
   lda [magiPtr],y
   sta $2116
   iny
@@ -2107,8 +2371,51 @@ MagiNmiLoop:
   sta $2119
   iny
   dec magiCount
-  bne MagiNmiLoop
-MagiNmiDone:
+  bne ApplyVramListLoop
+ApplyVramListDone:
+  rts
+
+; Holo Planet: apply the current phase's BG2 writes and, when the speed
+; changed, the small gauge list as well.  Both lists share the magiPtr
+; convention, so one loop serves both.
+HoloNmiUpdate:
+  rep #$30
+  lda holoPhase
+  and #$00FF
+  sta magiTemp
+  asl a
+  clc
+  adc magiTemp
+  tax
+  sep #$20
+  lda.l HoloUpdatePtrs,x
+  sta magiPtr
+  lda.l HoloUpdatePtrs+1,x
+  sta magiPtr+1
+  lda.l HoloUpdatePtrs+2,x
+  sta magiPtr+2
+  jsr ApplyVramList
+
+  lda holoGauge
+  beq HoloNmiDone
+  stz holoGauge
+  rep #$30
+  lda holoRate
+  and #$00FF
+  sta magiTemp
+  asl a
+  clc
+  adc magiTemp
+  tax
+  sep #$20
+  lda.l HoloGaugePtrs,x
+  sta magiPtr
+  lda.l HoloGaugePtrs+1,x
+  sta magiPtr+1
+  lda.l HoloGaugePtrs+2,x
+  sta magiPtr+2
+  jsr ApplyVramList
+HoloNmiDone:
   rts
 
 ; =============================================================================

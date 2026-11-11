@@ -2,9 +2,9 @@
 
 A SNES cartridge demo for real hardware: six generative sci-fi scenes, a
 scene selector, smooth fade transitions and a hands-off party mode.  The
-original Lissajous comet is still here, joined by a wireframe Holo Planet, a
-Pulse Analyzer, a neon Vector City, a Bohr-style Atomic scene and a synthwave
-Neon City.
+original Lissajous comet is still here, joined by a holographic Holo Planet
+console, a Pulse Analyzer, a neon Vector City, a Bohr-style Atomic scene and a
+synthwave Neon City.
 
 ![Scene selector](screenshots/title.png)
 ![Holo Planet](screenshots/scene-holo.png)
@@ -56,24 +56,33 @@ return to it with **Select** during a scene.
 | B | Pause / resume |
 | X | Cycle the four colour themes |
 | Y | Show / hide the scene-name HUD |
-| Up / Down | Brightness (party mode, and all non-Lissajous scenes) |
-| Left / Right | Lissajous: frequency A |
-| Up / Down | Lissajous: frequency B |
+| Up / Down | Holo Planet: rotation speed (0-4); Lissajous: frequency B; otherwise brightness |
+| Left / Right | Holo Planet: spin the globe by hand while held; Lissajous: frequency A |
 
 Party mode auto-cycles through the six scenes every ten seconds, advances the
-colour theme on each cycle, and shows the scene name in gold.  Brightness and
-blackout are available everywhere; the scene-name HUD can be hidden with **Y**.
+colour theme on each cycle, and shows the scene name in gold.  Brightness is
+available in party mode and in every scene except Holo Planet (where the D-pad
+drives the globe); blackout works everywhere, and the scene-name HUD can be
+hidden with **Y**.
 
 ## Scenes
 
-- **Holo Planet** — a rotating wireframe sphere with latitude rings, a tilted
-  planetary ring, two orbiting moons and a white core glow.
+- **Holo Planet** — a NERV "holographic planet monitor" built as a real tiled
+  Mode 1 console: hazard-striped header, orbital gauges, holo-layer toggles,
+  defence status, floating LAT/LON and target readouts, and a full-width
+  resonance spectrum.  The planet itself is a dot-matrix globe: crisp static
+  latitude parallels and orbital rings on BG2, plus 120 precomputed rotation
+  phases of surface particles and dotted meridians.  Each phase has **two
+  complementary OAM fields that are flickered** (persistence of vision), so
+  the globe shows twice the 96 sprites the hardware can draw at once.  **Left /
+  Right spin the globe by hand; Up / Down set the automatic rotation speed**
+  (the speed gauge in the left panel follows).
 - **Pulse Analyzer** — a NERV-style "MAGI-01" monitoring console built from
   `References/interface1.jpeg`, `interface2.jpeg` and the animated
   `Interface3.html`: hazard-striped header, SYNC RATE readout, eight
   segmented spectrum bars with peak hold, an oscilloscope trace, a rotating
   A.T. field octahedron, the MAGI consensus panel and a scrolling spectrum
-  matrix.  Unlike the other scenes it is a real tiled Mode 1 interface, so
+  matrix.  Like Holo Planet it is a real tiled Mode 1 interface, so
   the labels are crisp 5x7 text rather than magnified Mode 7 pixels.
 - **Vector City** — a neon skyline in Mode 7 with parallel scrolling, flying
   cars, a moon, perspective ground lines and a per-scanline HDMA wave.
@@ -144,26 +153,31 @@ tools/wla/                WLA-DX 10.7 binaries used by build.py
 
 - **Banks.** Bank 0 holds the 65816 code and the original Lissajous tables.
   Bank 1 holds shared scene metadata, selector maps, theme palettes, sprite
-  tiles, texture descriptors and the Vector City HDMA table.  Banks 2–12 hold
+  tiles, texture descriptors and the Vector City HDMA table.  Banks 2–14 hold
   the precomputed Mode 7 backgrounds, the Pulse Analyzer console tiles and
-  maps, the OAM frames and the Neon City scanline tables.  `generate_scenes.py`
-  packs the blobs with first fit so the holes left by the large backgrounds are
-  reused, and it refuses to place an item across a bank boundary because a DMA
-  source address has only 16 bits.  The ROM header is in bank 0 at `$FFC0`.
+  maps, the Holo Planet console and globe, the OAM frames and the Neon City
+  scanline tables.  `generate_scenes.py` packs the blobs with first fit so the
+  holes left by the large backgrounds are reused, and it refuses to place an
+  item across a bank boundary because a DMA source address has only 16 bits.
+  The ROM header is in bank 0 at `$FFC0`.
 - **Scene engine.** Every scene is described by a 16-byte descriptor: Mode 7
   background pointer and size, OAM-frame table pointer and count, scroll
   parameters, flags, scale and HUD name.  `StartScene` loads the descriptor,
   uploads the background and palettes and starts the appropriate update path.
   Flags are `$01` Lissajous real-time trail, `$02` Vector City scroll, `$04`
-  Neon City perspective floor and `$08` Pulse Analyzer tiled console.  The
-  Pulse Analyzer descriptor leaves the Mode 7 background fields at zero:
-  `InitMagiScene` uploads its tiles and tilemaps and switches the PPU to Mode 1.
-- **OAM frames.** Holo Planet, Pulse Analyzer, Vector City and Atomic stream
+  Neon City perspective floor, `$08` Pulse Analyzer tiled console and `$10`
+  Holo Planet tiled console.  Both consoles leave the Mode 7 background fields
+  at zero: `InitMagiScene`/`InitHoloScene` upload their tiles and tilemaps and
+  switch the PPU to Mode 1.
+- **OAM frames.** Pulse Analyzer, Vector City, Atomic and Neon City stream
   precomputed frames of 96 sprites each from ROM (384 bytes of OAM entries +
-  24 bytes of OAM high-table bits per frame).  This keeps the 65816 main loop
-  at 60 Hz and makes the animation deterministic.  Slots 0–95 are the scene
-  particles; slots 96–127 are the HUD.  Neon City needs a single frame: the car
-  is static and all of the motion comes from the Mode 7 floor.
+  24 bytes of OAM high-table bits per frame).  Holo Planet has 240 frames:
+  120 rotation phases with two complementary fields each, flickered one per
+  vblank so the globe shows twice the 96 sprites of a single frame.  This keeps
+  the 65816 main loop at 60 Hz and makes the animation deterministic.  Slots
+  0–95 are the scene particles; slots 96–127 are the HUD.  Neon City needs a
+  single frame: the car is static and all of the motion comes from the Mode 7
+  floor.
 - **VRAM.** Mode 7 backgrounds occupy VRAM word 0 onward (14,080 bytes for the
   88×77 scenes, 28,160 bytes for the 176×77 Vector City).  Neon City uploads
   the entire 32 KiB Mode 7 plane: the top-left corner holds a 176-texel-wide
@@ -173,7 +187,17 @@ tools/wla/                WLA-DX 10.7 binaries used by build.py
   tiles 144–201).  For the Pulse Analyzer the same 32 KiB BG area is reused:
   BG1 characters at `$0000`, BG2/BG3 characters at `$3000` (BG3's heat cell at
   `$3000`, the BG2 cell atlas at `$3010`) and the three 32×32 maps at `$3400`,
-  `$3800` and `$3C00`.
+  `$3800` and `$3C00`.  Holo Planet uses BG1 characters at `$0000`, BG2
+  characters at `$2000`, the BG1 map at `$3800` and the BG2 map at `$3C00`.
+- **Holo Planet layers.** BG1 is the console (4bpp, one 16-colour palette):
+  header, gauges, holo-layer toggles, defence status, floating readouts and
+  footer, with the centre left transparent.  BG2 holds the static globe
+  furniture (limb, latitude parallels, orbital rings and the north-pole tick)
+  at low priority, so the console clips it, and the animated spectrum/gauge/
+  beacon cells at high priority over the console.  The planet surface is the
+  OAM dot matrix: six dotted meridians and 20 particles per field, plus four
+  satellite markers and two labels.  Latitude parallels do not move under a
+  yaw spin, which is why they can stay in BG2 while the meridians are dots.
 - **Pulse Analyzer layers.** BG1 is the static console (4bpp, palette 2,
   256×224 of crisp 5×7 text and panel furniture).  BG2 carries the animated
   bar wells and gauges (4bpp, palette 3) and BG3 the spectrum matrix (2bpp,
@@ -203,13 +227,15 @@ tools/wla/                WLA-DX 10.7 binaries used by build.py
   palette (deep indigo sky, orange/pink sun, cyan grid, magenta road lines) and
   object palette 4 is a dedicated red ramp so the car can be shaded.  The Pulse
   Analyzer owns CGRAM 0–63: eight 4-colour BG3 heat ramps, the BG1 UI palette
-  and the BG2 bar palette, each precomputed for all four themes.  The MONO
-  theme turns the console into a white phosphor monitor.
+  and the BG2 bar palette, each precomputed for all four themes.  Holo Planet
+  uses a single 16-colour BG palette (CGRAM 0–15) shared by the console and the
+  globe overlay, and the same four theme variants.  The MONO theme turns both
+  consoles into white phosphor monitors.
 - **Safety.** Scene VRAM/CGRAM uploads run with NMI and HDMA off and forced
   blank.  During gameplay only OAM is updated, by a 544-byte DMA inside the
-  vblank NMI, plus the small Pulse Analyzer cell list.  Precomputed OAM frames
-  are copied into the OAM shadow with two small DMAs (entries and high table)
-  before the OAM DMA.
+  vblank NMI, plus the small Pulse Analyzer and Holo Planet cell lists.
+  Precomputed OAM frames are copied into the OAM shadow with two small DMAs
+  (entries and high table) before the OAM DMA.
 
 ## Header / checksum
 
@@ -219,8 +245,8 @@ Mapper:     LoROM (slow ROM)
 Cart type:  ROM only ($00)
 ROM size:   512 KiB (header value $09)
 Region:     USA / NTSC ($01)
-Checksum:   $0EEC / complement $F113
-SHA-256:    dcc22e075ccaadbb642a4aaa0f18af38ee4265a7b5acf3100778f5ce0532b759
+Checksum:   $B9F9 / complement $4606
+SHA-256:    5fcfc2ae50af00a06697bd28647691702a5dced3a2975ba73e2cd8d0471039ba
 ```
 
 The checksum is recomputed after linking by `build.py` with the standard
@@ -231,9 +257,9 @@ own value includes the bytes as stored, which made some tools disagree.
 
 ## Notes
 
-- Snes9x 1.63 verification: all six scenes, the selector, the title screen and
-  the Pulse Analyzer's four colour themes were checked with native 256x224
-  captures.
+- Snes9x 1.63 verification: all six scenes, the selector, the title screen, the
+  Pulse Analyzer's four colour themes, the Holo Planet's four themes and its
+  D-pad rotation/speed controls were checked with native 256x224 captures.
 - This is a 60 Hz NTSC release.  On a PAL console the picture will still run,
   but at 50 Hz and with PAL borders.
 - A genuine original cartridge needs the CIC lockout chip and a compatible
@@ -248,17 +274,27 @@ own value includes the bytes as stored, which made some tools disagree.
   `M7D` tables makes the cells rush towards the viewer at the correct
   accelerating rate.  The car is the only sprite in the scene, so one OAM frame
   is enough and the whole frame budget goes into the floor.
-- The Pulse Analyzer is the only scene that is not Mode 7.  The console is a
-  Mode 1 interface because the reference art is typography-heavy and a 256×224
-  Mode 7 plane would have to be magnified three times to fill the screen.  Its
-  VU bars are 8×8 BG cells whose map entries are swapped as the levels change,
-  the peak-hold markers are cells of their own, and the spectrum waterfall is a
-  BG3 tilemap scrolled two pixels per frame.  The moving parts are the two
-  sprite displays: the oscilloscope trace (28 dots) and the A.T. field
-  octahedron (six glowing nodes plus five dots per edge).
+- The Pulse Analyzer and Holo Planet are the two tiled Mode 1 scenes.  Their
+  consoles are Mode 1 interfaces because the reference art is typography-heavy
+  and a 256×224 Mode 7 plane would have to be magnified three times to fill the
+  screen.  The Pulse Analyzer's VU bars are 8×8 BG cells whose map entries are
+  swapped as the levels change, the peak-hold markers are cells of their own,
+  and the spectrum waterfall is a BG3 tilemap scrolled two pixels per frame.
+  The moving parts are the two sprite displays: the oscilloscope trace (28
+  dots) and the A.T. field octahedron (six glowing nodes plus five dots per
+  edge).
+- Holo Planet fakes more sprites than the PPU allows: each of the 120 rotation
+  phases has two OAM frames, and the NMI alternates them every vblank.  The
+  globe therefore shows 120 meridian dots and 40 surface particles instead of
+  60 + 20.  The two fields are complementary, so a CRT (or the emulator) blends
+  them through persistence of vision; a still capture only shows one field.
+  The wireframe latitude parallels stay in BG2 because a yaw spin leaves them
+  in place, while the meridians are the moving dots.  **Left/Right** drive the
+  phase directly and **Up/Down** change the automatic speed.
 - The scene-name HUD is deliberately tiny: it is the only sprite text drawn
   during a scene, and it can be hidden completely with **Y**.  In the Pulse
-  Analyzer it sits in the console's own title band, next to the MAGI-01 badge.
+  Analyzer it sits in the console's own title band, next to the MAGI-01 badge;
+  in Holo Planet it sits in the header's left title band.
 
 ## References
 
@@ -271,5 +307,7 @@ own value includes the bytes as stored, which made some tools disagree.
   documentation list used while building the tiled console.
 - The Pulse Analyzer layout follows the supplied `References/interface1.jpeg`,
   `interface2.jpeg`, `Interface3.png` and the animated `Interface3.html`.
+- The Holo Planet console and globe follow `References/HoloPlanet.png` and the
+  animated `References/HoloPlanet.html`.
 
 

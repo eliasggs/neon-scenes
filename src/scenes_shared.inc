@@ -24,6 +24,14 @@
 .DEFINE MAGI_BG1_MAP $3400
 .DEFINE MAGI_BG2_MAP $3800
 .DEFINE MAGI_BG3_MAP $3C00
+.DEFINE HOLO_PHASES 120
+.DEFINE HOLO_SLOTS 96
+.DEFINE HOLO_BG1_TILE_BYTES_LO $A0
+.DEFINE HOLO_BG1_TILE_BYTES_HI $2D
+.DEFINE HOLO_BG2_TILE_BYTES_LO $C0
+.DEFINE HOLO_BG2_TILE_BYTES_HI $23
+.DEFINE HOLO_BG1_MAP $3800
+.DEFINE HOLO_BG2_MAP $3C00
 
 SelectorMap0:
   .DB $0D, $04, $0D, $04, $0D, $04, $0D, $04, $0D, $04, $0D, $04, $0D, $04, $0D, $04
@@ -1761,6 +1769,28 @@ ThemeBgMagiPtrs:
   .DW ThemeBgMagi0, ThemeBgMagi1, ThemeBgMagi2, ThemeBgMagi3
 ThemeBgMagiBanks:
   .DB :ThemeBgMagi0, :ThemeBgMagi1, :ThemeBgMagi2, :ThemeBgMagi3
+ThemeBgHolo0:
+  .DB $00, $00, $00, $00, $02, $00, $44, $00, $67, $00, $AC, $00, $11, $01, $58, $01
+  .DB $BF, $01, $5F, $12, $1F, $33, $BF, $5F, $FF, $7F, $51, $00, $9F, $10, $EC, $4F
+
+ThemeBgHolo1:
+  .DB $00, $00, $00, $00, $02, $00, $04, $00, $07, $00, $2C, $00, $51, $00, $58, $00
+  .DB $5F, $00, $FF, $04, $1F, $2E, $3F, $5B, $FF, $7F, $11, $0C, $3F, $2C, $EB, $2F
+
+ThemeBgHolo2:
+  .DB $00, $00, $00, $00, $40, $00, $80, $04, $E0, $08, $80, $0D, $20, $12, $00, $1B
+  .DB $E0, $1F, $E2, $33, $EB, $53, $F6, $6F, $FF, $7F, $20, $02, $E8, $0B, $70, $7D
+
+ThemeBgHolo3:
+  .DB $00, $00, $00, $04, $42, $08, $84, $10, $C6, $1C, $29, $29, $8C, $39, $10, $4A
+  .DB $73, $5A, $D6, $66, $5A, $7B, $BD, $7F, $FF, $7F, $29, $29, $CE, $45, $5A, $77
+
+ThemeBgHoloPtrs:
+  .DW ThemeBgHolo0, ThemeBgHolo1, ThemeBgHolo2, ThemeBgHolo3
+ThemeBgHoloBanks:
+  .DB :ThemeBgHolo0, :ThemeBgHolo1, :ThemeBgHolo2, :ThemeBgHolo3
+HoloRateSteps:
+  .DW $0000, $0040, $0080, $0100, $0180
 
 NeonVTablePtrs:
   .DB <NeonVTable0, >NeonVTable0, :NeonVTable0
@@ -1805,10 +1835,10 @@ SceneNameTable:
   .DB $09, $2E, $25, $2F, $2E, $00, $23, $29, $34, $39, $00, $00, $00, $00, $00, $00
 
 SceneDesc:
-  .DB <SceneBg0, >SceneBg0, :SceneBg0
+  .DB $00, $00, $00
   .DB <SceneFramePtrs0, >SceneFramePtrs0, :SceneFramePtrs0
-  .DB $78, $00, $00, $58, $00, $00
-  .DW $3700
+  .DB $F0, $00, $10, $00, $00, $00
+  .DW $0000
   .DW SceneNameTable+0
   .DB $00, $00, $00
   .DB <SceneFramePtrs1, >SceneFramePtrs1, :SceneFramePtrs1
@@ -1957,6 +1987,126 @@ SceneFramePtrs0:
   .DB <Scene0Frame117, >Scene0Frame117, :Scene0Frame117
   .DB <Scene0Frame118, >Scene0Frame118, :Scene0Frame118
   .DB <Scene0Frame119, >Scene0Frame119, :Scene0Frame119
+  .DB <Scene0Frame120, >Scene0Frame120, :Scene0Frame120
+  .DB <Scene0Frame121, >Scene0Frame121, :Scene0Frame121
+  .DB <Scene0Frame122, >Scene0Frame122, :Scene0Frame122
+  .DB <Scene0Frame123, >Scene0Frame123, :Scene0Frame123
+  .DB <Scene0Frame124, >Scene0Frame124, :Scene0Frame124
+  .DB <Scene0Frame125, >Scene0Frame125, :Scene0Frame125
+  .DB <Scene0Frame126, >Scene0Frame126, :Scene0Frame126
+  .DB <Scene0Frame127, >Scene0Frame127, :Scene0Frame127
+  .DB <Scene0Frame128, >Scene0Frame128, :Scene0Frame128
+  .DB <Scene0Frame129, >Scene0Frame129, :Scene0Frame129
+  .DB <Scene0Frame130, >Scene0Frame130, :Scene0Frame130
+  .DB <Scene0Frame131, >Scene0Frame131, :Scene0Frame131
+  .DB <Scene0Frame132, >Scene0Frame132, :Scene0Frame132
+  .DB <Scene0Frame133, >Scene0Frame133, :Scene0Frame133
+  .DB <Scene0Frame134, >Scene0Frame134, :Scene0Frame134
+  .DB <Scene0Frame135, >Scene0Frame135, :Scene0Frame135
+  .DB <Scene0Frame136, >Scene0Frame136, :Scene0Frame136
+  .DB <Scene0Frame137, >Scene0Frame137, :Scene0Frame137
+  .DB <Scene0Frame138, >Scene0Frame138, :Scene0Frame138
+  .DB <Scene0Frame139, >Scene0Frame139, :Scene0Frame139
+  .DB <Scene0Frame140, >Scene0Frame140, :Scene0Frame140
+  .DB <Scene0Frame141, >Scene0Frame141, :Scene0Frame141
+  .DB <Scene0Frame142, >Scene0Frame142, :Scene0Frame142
+  .DB <Scene0Frame143, >Scene0Frame143, :Scene0Frame143
+  .DB <Scene0Frame144, >Scene0Frame144, :Scene0Frame144
+  .DB <Scene0Frame145, >Scene0Frame145, :Scene0Frame145
+  .DB <Scene0Frame146, >Scene0Frame146, :Scene0Frame146
+  .DB <Scene0Frame147, >Scene0Frame147, :Scene0Frame147
+  .DB <Scene0Frame148, >Scene0Frame148, :Scene0Frame148
+  .DB <Scene0Frame149, >Scene0Frame149, :Scene0Frame149
+  .DB <Scene0Frame150, >Scene0Frame150, :Scene0Frame150
+  .DB <Scene0Frame151, >Scene0Frame151, :Scene0Frame151
+  .DB <Scene0Frame152, >Scene0Frame152, :Scene0Frame152
+  .DB <Scene0Frame153, >Scene0Frame153, :Scene0Frame153
+  .DB <Scene0Frame154, >Scene0Frame154, :Scene0Frame154
+  .DB <Scene0Frame155, >Scene0Frame155, :Scene0Frame155
+  .DB <Scene0Frame156, >Scene0Frame156, :Scene0Frame156
+  .DB <Scene0Frame157, >Scene0Frame157, :Scene0Frame157
+  .DB <Scene0Frame158, >Scene0Frame158, :Scene0Frame158
+  .DB <Scene0Frame159, >Scene0Frame159, :Scene0Frame159
+  .DB <Scene0Frame160, >Scene0Frame160, :Scene0Frame160
+  .DB <Scene0Frame161, >Scene0Frame161, :Scene0Frame161
+  .DB <Scene0Frame162, >Scene0Frame162, :Scene0Frame162
+  .DB <Scene0Frame163, >Scene0Frame163, :Scene0Frame163
+  .DB <Scene0Frame164, >Scene0Frame164, :Scene0Frame164
+  .DB <Scene0Frame165, >Scene0Frame165, :Scene0Frame165
+  .DB <Scene0Frame166, >Scene0Frame166, :Scene0Frame166
+  .DB <Scene0Frame167, >Scene0Frame167, :Scene0Frame167
+  .DB <Scene0Frame168, >Scene0Frame168, :Scene0Frame168
+  .DB <Scene0Frame169, >Scene0Frame169, :Scene0Frame169
+  .DB <Scene0Frame170, >Scene0Frame170, :Scene0Frame170
+  .DB <Scene0Frame171, >Scene0Frame171, :Scene0Frame171
+  .DB <Scene0Frame172, >Scene0Frame172, :Scene0Frame172
+  .DB <Scene0Frame173, >Scene0Frame173, :Scene0Frame173
+  .DB <Scene0Frame174, >Scene0Frame174, :Scene0Frame174
+  .DB <Scene0Frame175, >Scene0Frame175, :Scene0Frame175
+  .DB <Scene0Frame176, >Scene0Frame176, :Scene0Frame176
+  .DB <Scene0Frame177, >Scene0Frame177, :Scene0Frame177
+  .DB <Scene0Frame178, >Scene0Frame178, :Scene0Frame178
+  .DB <Scene0Frame179, >Scene0Frame179, :Scene0Frame179
+  .DB <Scene0Frame180, >Scene0Frame180, :Scene0Frame180
+  .DB <Scene0Frame181, >Scene0Frame181, :Scene0Frame181
+  .DB <Scene0Frame182, >Scene0Frame182, :Scene0Frame182
+  .DB <Scene0Frame183, >Scene0Frame183, :Scene0Frame183
+  .DB <Scene0Frame184, >Scene0Frame184, :Scene0Frame184
+  .DB <Scene0Frame185, >Scene0Frame185, :Scene0Frame185
+  .DB <Scene0Frame186, >Scene0Frame186, :Scene0Frame186
+  .DB <Scene0Frame187, >Scene0Frame187, :Scene0Frame187
+  .DB <Scene0Frame188, >Scene0Frame188, :Scene0Frame188
+  .DB <Scene0Frame189, >Scene0Frame189, :Scene0Frame189
+  .DB <Scene0Frame190, >Scene0Frame190, :Scene0Frame190
+  .DB <Scene0Frame191, >Scene0Frame191, :Scene0Frame191
+  .DB <Scene0Frame192, >Scene0Frame192, :Scene0Frame192
+  .DB <Scene0Frame193, >Scene0Frame193, :Scene0Frame193
+  .DB <Scene0Frame194, >Scene0Frame194, :Scene0Frame194
+  .DB <Scene0Frame195, >Scene0Frame195, :Scene0Frame195
+  .DB <Scene0Frame196, >Scene0Frame196, :Scene0Frame196
+  .DB <Scene0Frame197, >Scene0Frame197, :Scene0Frame197
+  .DB <Scene0Frame198, >Scene0Frame198, :Scene0Frame198
+  .DB <Scene0Frame199, >Scene0Frame199, :Scene0Frame199
+  .DB <Scene0Frame200, >Scene0Frame200, :Scene0Frame200
+  .DB <Scene0Frame201, >Scene0Frame201, :Scene0Frame201
+  .DB <Scene0Frame202, >Scene0Frame202, :Scene0Frame202
+  .DB <Scene0Frame203, >Scene0Frame203, :Scene0Frame203
+  .DB <Scene0Frame204, >Scene0Frame204, :Scene0Frame204
+  .DB <Scene0Frame205, >Scene0Frame205, :Scene0Frame205
+  .DB <Scene0Frame206, >Scene0Frame206, :Scene0Frame206
+  .DB <Scene0Frame207, >Scene0Frame207, :Scene0Frame207
+  .DB <Scene0Frame208, >Scene0Frame208, :Scene0Frame208
+  .DB <Scene0Frame209, >Scene0Frame209, :Scene0Frame209
+  .DB <Scene0Frame210, >Scene0Frame210, :Scene0Frame210
+  .DB <Scene0Frame211, >Scene0Frame211, :Scene0Frame211
+  .DB <Scene0Frame212, >Scene0Frame212, :Scene0Frame212
+  .DB <Scene0Frame213, >Scene0Frame213, :Scene0Frame213
+  .DB <Scene0Frame214, >Scene0Frame214, :Scene0Frame214
+  .DB <Scene0Frame215, >Scene0Frame215, :Scene0Frame215
+  .DB <Scene0Frame216, >Scene0Frame216, :Scene0Frame216
+  .DB <Scene0Frame217, >Scene0Frame217, :Scene0Frame217
+  .DB <Scene0Frame218, >Scene0Frame218, :Scene0Frame218
+  .DB <Scene0Frame219, >Scene0Frame219, :Scene0Frame219
+  .DB <Scene0Frame220, >Scene0Frame220, :Scene0Frame220
+  .DB <Scene0Frame221, >Scene0Frame221, :Scene0Frame221
+  .DB <Scene0Frame222, >Scene0Frame222, :Scene0Frame222
+  .DB <Scene0Frame223, >Scene0Frame223, :Scene0Frame223
+  .DB <Scene0Frame224, >Scene0Frame224, :Scene0Frame224
+  .DB <Scene0Frame225, >Scene0Frame225, :Scene0Frame225
+  .DB <Scene0Frame226, >Scene0Frame226, :Scene0Frame226
+  .DB <Scene0Frame227, >Scene0Frame227, :Scene0Frame227
+  .DB <Scene0Frame228, >Scene0Frame228, :Scene0Frame228
+  .DB <Scene0Frame229, >Scene0Frame229, :Scene0Frame229
+  .DB <Scene0Frame230, >Scene0Frame230, :Scene0Frame230
+  .DB <Scene0Frame231, >Scene0Frame231, :Scene0Frame231
+  .DB <Scene0Frame232, >Scene0Frame232, :Scene0Frame232
+  .DB <Scene0Frame233, >Scene0Frame233, :Scene0Frame233
+  .DB <Scene0Frame234, >Scene0Frame234, :Scene0Frame234
+  .DB <Scene0Frame235, >Scene0Frame235, :Scene0Frame235
+  .DB <Scene0Frame236, >Scene0Frame236, :Scene0Frame236
+  .DB <Scene0Frame237, >Scene0Frame237, :Scene0Frame237
+  .DB <Scene0Frame238, >Scene0Frame238, :Scene0Frame238
+  .DB <Scene0Frame239, >Scene0Frame239, :Scene0Frame239
 
 SceneFramePtrs1:
   .DB <Scene1Frame0, >Scene1Frame0, :Scene1Frame0
@@ -2464,6 +2614,135 @@ MagiUpdatePtrs:
   .DB <MagiUpdate125, >MagiUpdate125, :MagiUpdate125
   .DB <MagiUpdate126, >MagiUpdate126, :MagiUpdate126
   .DB <MagiUpdate127, >MagiUpdate127, :MagiUpdate127
+
+HoloUpdatePtrs:
+  .DB <HoloUpdate0, >HoloUpdate0, :HoloUpdate0
+  .DB <HoloUpdate1, >HoloUpdate1, :HoloUpdate1
+  .DB <HoloUpdate2, >HoloUpdate2, :HoloUpdate2
+  .DB <HoloUpdate3, >HoloUpdate3, :HoloUpdate3
+  .DB <HoloUpdate4, >HoloUpdate4, :HoloUpdate4
+  .DB <HoloUpdate5, >HoloUpdate5, :HoloUpdate5
+  .DB <HoloUpdate6, >HoloUpdate6, :HoloUpdate6
+  .DB <HoloUpdate7, >HoloUpdate7, :HoloUpdate7
+  .DB <HoloUpdate8, >HoloUpdate8, :HoloUpdate8
+  .DB <HoloUpdate9, >HoloUpdate9, :HoloUpdate9
+  .DB <HoloUpdate10, >HoloUpdate10, :HoloUpdate10
+  .DB <HoloUpdate11, >HoloUpdate11, :HoloUpdate11
+  .DB <HoloUpdate12, >HoloUpdate12, :HoloUpdate12
+  .DB <HoloUpdate13, >HoloUpdate13, :HoloUpdate13
+  .DB <HoloUpdate14, >HoloUpdate14, :HoloUpdate14
+  .DB <HoloUpdate15, >HoloUpdate15, :HoloUpdate15
+  .DB <HoloUpdate16, >HoloUpdate16, :HoloUpdate16
+  .DB <HoloUpdate17, >HoloUpdate17, :HoloUpdate17
+  .DB <HoloUpdate18, >HoloUpdate18, :HoloUpdate18
+  .DB <HoloUpdate19, >HoloUpdate19, :HoloUpdate19
+  .DB <HoloUpdate20, >HoloUpdate20, :HoloUpdate20
+  .DB <HoloUpdate21, >HoloUpdate21, :HoloUpdate21
+  .DB <HoloUpdate22, >HoloUpdate22, :HoloUpdate22
+  .DB <HoloUpdate23, >HoloUpdate23, :HoloUpdate23
+  .DB <HoloUpdate24, >HoloUpdate24, :HoloUpdate24
+  .DB <HoloUpdate25, >HoloUpdate25, :HoloUpdate25
+  .DB <HoloUpdate26, >HoloUpdate26, :HoloUpdate26
+  .DB <HoloUpdate27, >HoloUpdate27, :HoloUpdate27
+  .DB <HoloUpdate28, >HoloUpdate28, :HoloUpdate28
+  .DB <HoloUpdate29, >HoloUpdate29, :HoloUpdate29
+  .DB <HoloUpdate30, >HoloUpdate30, :HoloUpdate30
+  .DB <HoloUpdate31, >HoloUpdate31, :HoloUpdate31
+  .DB <HoloUpdate32, >HoloUpdate32, :HoloUpdate32
+  .DB <HoloUpdate33, >HoloUpdate33, :HoloUpdate33
+  .DB <HoloUpdate34, >HoloUpdate34, :HoloUpdate34
+  .DB <HoloUpdate35, >HoloUpdate35, :HoloUpdate35
+  .DB <HoloUpdate36, >HoloUpdate36, :HoloUpdate36
+  .DB <HoloUpdate37, >HoloUpdate37, :HoloUpdate37
+  .DB <HoloUpdate38, >HoloUpdate38, :HoloUpdate38
+  .DB <HoloUpdate39, >HoloUpdate39, :HoloUpdate39
+  .DB <HoloUpdate40, >HoloUpdate40, :HoloUpdate40
+  .DB <HoloUpdate41, >HoloUpdate41, :HoloUpdate41
+  .DB <HoloUpdate42, >HoloUpdate42, :HoloUpdate42
+  .DB <HoloUpdate43, >HoloUpdate43, :HoloUpdate43
+  .DB <HoloUpdate44, >HoloUpdate44, :HoloUpdate44
+  .DB <HoloUpdate45, >HoloUpdate45, :HoloUpdate45
+  .DB <HoloUpdate46, >HoloUpdate46, :HoloUpdate46
+  .DB <HoloUpdate47, >HoloUpdate47, :HoloUpdate47
+  .DB <HoloUpdate48, >HoloUpdate48, :HoloUpdate48
+  .DB <HoloUpdate49, >HoloUpdate49, :HoloUpdate49
+  .DB <HoloUpdate50, >HoloUpdate50, :HoloUpdate50
+  .DB <HoloUpdate51, >HoloUpdate51, :HoloUpdate51
+  .DB <HoloUpdate52, >HoloUpdate52, :HoloUpdate52
+  .DB <HoloUpdate53, >HoloUpdate53, :HoloUpdate53
+  .DB <HoloUpdate54, >HoloUpdate54, :HoloUpdate54
+  .DB <HoloUpdate55, >HoloUpdate55, :HoloUpdate55
+  .DB <HoloUpdate56, >HoloUpdate56, :HoloUpdate56
+  .DB <HoloUpdate57, >HoloUpdate57, :HoloUpdate57
+  .DB <HoloUpdate58, >HoloUpdate58, :HoloUpdate58
+  .DB <HoloUpdate59, >HoloUpdate59, :HoloUpdate59
+  .DB <HoloUpdate60, >HoloUpdate60, :HoloUpdate60
+  .DB <HoloUpdate61, >HoloUpdate61, :HoloUpdate61
+  .DB <HoloUpdate62, >HoloUpdate62, :HoloUpdate62
+  .DB <HoloUpdate63, >HoloUpdate63, :HoloUpdate63
+  .DB <HoloUpdate64, >HoloUpdate64, :HoloUpdate64
+  .DB <HoloUpdate65, >HoloUpdate65, :HoloUpdate65
+  .DB <HoloUpdate66, >HoloUpdate66, :HoloUpdate66
+  .DB <HoloUpdate67, >HoloUpdate67, :HoloUpdate67
+  .DB <HoloUpdate68, >HoloUpdate68, :HoloUpdate68
+  .DB <HoloUpdate69, >HoloUpdate69, :HoloUpdate69
+  .DB <HoloUpdate70, >HoloUpdate70, :HoloUpdate70
+  .DB <HoloUpdate71, >HoloUpdate71, :HoloUpdate71
+  .DB <HoloUpdate72, >HoloUpdate72, :HoloUpdate72
+  .DB <HoloUpdate73, >HoloUpdate73, :HoloUpdate73
+  .DB <HoloUpdate74, >HoloUpdate74, :HoloUpdate74
+  .DB <HoloUpdate75, >HoloUpdate75, :HoloUpdate75
+  .DB <HoloUpdate76, >HoloUpdate76, :HoloUpdate76
+  .DB <HoloUpdate77, >HoloUpdate77, :HoloUpdate77
+  .DB <HoloUpdate78, >HoloUpdate78, :HoloUpdate78
+  .DB <HoloUpdate79, >HoloUpdate79, :HoloUpdate79
+  .DB <HoloUpdate80, >HoloUpdate80, :HoloUpdate80
+  .DB <HoloUpdate81, >HoloUpdate81, :HoloUpdate81
+  .DB <HoloUpdate82, >HoloUpdate82, :HoloUpdate82
+  .DB <HoloUpdate83, >HoloUpdate83, :HoloUpdate83
+  .DB <HoloUpdate84, >HoloUpdate84, :HoloUpdate84
+  .DB <HoloUpdate85, >HoloUpdate85, :HoloUpdate85
+  .DB <HoloUpdate86, >HoloUpdate86, :HoloUpdate86
+  .DB <HoloUpdate87, >HoloUpdate87, :HoloUpdate87
+  .DB <HoloUpdate88, >HoloUpdate88, :HoloUpdate88
+  .DB <HoloUpdate89, >HoloUpdate89, :HoloUpdate89
+  .DB <HoloUpdate90, >HoloUpdate90, :HoloUpdate90
+  .DB <HoloUpdate91, >HoloUpdate91, :HoloUpdate91
+  .DB <HoloUpdate92, >HoloUpdate92, :HoloUpdate92
+  .DB <HoloUpdate93, >HoloUpdate93, :HoloUpdate93
+  .DB <HoloUpdate94, >HoloUpdate94, :HoloUpdate94
+  .DB <HoloUpdate95, >HoloUpdate95, :HoloUpdate95
+  .DB <HoloUpdate96, >HoloUpdate96, :HoloUpdate96
+  .DB <HoloUpdate97, >HoloUpdate97, :HoloUpdate97
+  .DB <HoloUpdate98, >HoloUpdate98, :HoloUpdate98
+  .DB <HoloUpdate99, >HoloUpdate99, :HoloUpdate99
+  .DB <HoloUpdate100, >HoloUpdate100, :HoloUpdate100
+  .DB <HoloUpdate101, >HoloUpdate101, :HoloUpdate101
+  .DB <HoloUpdate102, >HoloUpdate102, :HoloUpdate102
+  .DB <HoloUpdate103, >HoloUpdate103, :HoloUpdate103
+  .DB <HoloUpdate104, >HoloUpdate104, :HoloUpdate104
+  .DB <HoloUpdate105, >HoloUpdate105, :HoloUpdate105
+  .DB <HoloUpdate106, >HoloUpdate106, :HoloUpdate106
+  .DB <HoloUpdate107, >HoloUpdate107, :HoloUpdate107
+  .DB <HoloUpdate108, >HoloUpdate108, :HoloUpdate108
+  .DB <HoloUpdate109, >HoloUpdate109, :HoloUpdate109
+  .DB <HoloUpdate110, >HoloUpdate110, :HoloUpdate110
+  .DB <HoloUpdate111, >HoloUpdate111, :HoloUpdate111
+  .DB <HoloUpdate112, >HoloUpdate112, :HoloUpdate112
+  .DB <HoloUpdate113, >HoloUpdate113, :HoloUpdate113
+  .DB <HoloUpdate114, >HoloUpdate114, :HoloUpdate114
+  .DB <HoloUpdate115, >HoloUpdate115, :HoloUpdate115
+  .DB <HoloUpdate116, >HoloUpdate116, :HoloUpdate116
+  .DB <HoloUpdate117, >HoloUpdate117, :HoloUpdate117
+  .DB <HoloUpdate118, >HoloUpdate118, :HoloUpdate118
+  .DB <HoloUpdate119, >HoloUpdate119, :HoloUpdate119
+
+HoloGaugePtrs:
+  .DB <HoloGauge0, >HoloGauge0, :HoloGauge0
+  .DB <HoloGauge1, >HoloGauge1, :HoloGauge1
+  .DB <HoloGauge2, >HoloGauge2, :HoloGauge2
+  .DB <HoloGauge3, >HoloGauge3, :HoloGauge3
+  .DB <HoloGauge4, >HoloGauge4, :HoloGauge4
 
 CityHdmaTable:
   .DB $01, $00, $00
