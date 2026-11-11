@@ -55,12 +55,16 @@ def main() -> None:
     if len(data) != 512 * 1024:
         raise SystemExit(f"unexpected ROM size: {len(data)} bytes")
 
-    # WLA-DX writes a self-consistent-looking pair, but its sum includes the
-    # four checksum bytes themselves.  The standard SNES checksum excludes
-    # them.  Rewrite the pair so real hardware / flash cart tools agree too.
-    checksum = sum(
-        value for offset, value in enumerate(data)
-        if offset not in (0x7FDC, 0x7FDD, 0x7FDE, 0x7FDF)
+    # Standard SNES checksum: sum every byte with the four checksum bytes
+    # treated as FF FF 00 00.  Equivalently, sum the ROM with those bytes
+    # excluded and add $01FE.  (Snes9x reports "Invalid Checksum" for the
+    # plain excluded sum, even though the pair is self-consistent.)
+    checksum = (
+        sum(
+            value for offset, value in enumerate(data)
+            if offset not in (0x7FDC, 0x7FDD, 0x7FDE, 0x7FDF)
+        )
+        + 0x01FE
     ) & 0xFFFF
     complement = checksum ^ 0xFFFF
     data[0x7FDC] = complement & 0xFF
@@ -80,9 +84,12 @@ def main() -> None:
     complement = data[0x7FDC] | (data[0x7FDD] << 8)
     if (checksum ^ complement) != 0xFFFF:
         raise SystemExit("checksum/complement mismatch")
-    actual = sum(
-        value for offset, value in enumerate(data)
-        if offset not in (0x7FDC, 0x7FDD, 0x7FDE, 0x7FDF)
+    actual = (
+        sum(
+            value for offset, value in enumerate(data)
+            if offset not in (0x7FDC, 0x7FDD, 0x7FDE, 0x7FDF)
+        )
+        + 0x01FE
     ) & 0xFFFF
     if actual != checksum:
         raise SystemExit(f"checksum is ${checksum:04X}, expected ${actual:04X}")

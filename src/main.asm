@@ -141,6 +141,10 @@
 .DEFINE hudSlot16      $74   ; 16-bit
 .DEFINE returnToTitle  $76
 .DEFINE neonPhase     $77   ; 0..31, indexes the precomputed floor tables
+.DEFINE magiPtr       $78   ; 3 bytes: this frame's VRAM write list
+.DEFINE magiCount     $7B
+.DEFINE magiPending   $7C
+.DEFINE magiTemp      $7D   ; 16-bit scratch used only inside the NMI
 
 ; -----------------------------------------------------------------------------
 ; Work RAM
@@ -250,6 +254,7 @@ ResetWaitVblankEnd:
   stz swapDone
   stz oamDirty
   stz returnToTitle
+  stz magiPending
 
   jsr InitTitle
   lda #$81
@@ -488,7 +493,7 @@ HandleStoreTheme:
   lda #$8F
   sta $2100
   jsr ApplyTheme
-  jsr SetupCityHdma
+  jsr SetupSceneHdma
   lda brightness
   sta $2100
   lda #$81
@@ -648,11 +653,15 @@ NextStore:
 ;  Scene start / transition
 ; =============================================================================
 StartScene:
-  lda #$8F
-  sta $2100
+  ; Kill NMI/HDMA *before* forced blank: if a vblank NMI landed between the
+  ; two writes it would write brightness back to $2100 and un-blank the
+  ; screen, and the VRAM uploads below would then run during active display.
   stz $4200
   stz $420C
+  lda #$8F
+  sta $2100
   stz frameDmaRequest
+  stz magiPending
   stz oamDirty
   stz paused
   stz hudDirty
@@ -673,9 +682,15 @@ StartScene:
   jsr LoadSceneDesc
 
   lda sceneFlags
+  and #$08
+  bne StartSceneMagi
+  lda sceneFlags
   and #$01
   bne StartSceneLiss
   jsr InitFrameScene
+  bra StartSceneDone
+StartSceneMagi:
+  jsr InitMagiScene
   bra StartSceneDone
 StartSceneLiss:
   jsr InitLissajous
@@ -882,6 +897,153 @@ InitLissajous:
   lda #1
   sta oamDirty
   rts
+
+; =============================================================================
+;  Pulse Analyzer: Mode 1 monitoring console
+;
+;  BG1 is the static panel (4bpp, char base 0, map $3400).  BG2 holds the
+;  animated cells (4bpp, char base $3000, map $3800) and BG3 the spectrum
+;  matrix (2bpp, char base $3000, map $3C00).  BG2 and BG3 share the $3000
+;  character base: BG3's single cell tile sits at $3000 and BG2's atlas starts
+;  one 16x16 tile later at $3010, which is why the cell map starts at tile 1.
+; =============================================================================
+InitMagiScene:
+  lda #$02
+  sta $2101              ; keep the OBJ name base at word $4000
+  lda #$80
+  sta $2115
+
+  ; BG1 panel tiles -> word $0000.
+  lda #<MagiUiTiles.B
+  sta dmaSrc
+  lda #>MagiUiTiles.B
+  sta dmaSrc+1
+  lda #:MagiUiTiles.B
+  sta dmaBank
+  lda #MAGI_UI_TILE_BYTES_LO.B
+  sta dmaSize
+  lda #MAGI_UI_TILE_BYTES_HI.B
+  sta dmaSize+1
+  ldx #$0000
+  jsr MagiVramUpload
+
+  ; BG3 heat cell + blank tile -> word $3000.
+  lda #<MagiHeatTile.B
+  sta dmaSrc
+  lda #>MagiHeatTile.B
+  sta dmaSrc+1
+  lda #:MagiHeatTile.B
+  sta dmaBank
+  lda #$20
+  sta dmaSize
+  stz dmaSize+1
+  ldx #$3000
+  jsr MagiVramUpload
+
+  ; BG2 cell atlas -> word $3010 (tile index 1 onward).
+  lda #<MagiCellTiles.B
+  sta dmaSrc
+  lda #>MagiCellTiles.B
+  sta dmaSrc+1
+  lda #:MagiCellTiles.B
+  sta dmaBank
+  lda #MAGI_CELL_TILE_BYTES_LO.B
+  sta dmaSize
+  lda #MAGI_CELL_TILE_BYTES_HI.B
+  sta dmaSize+1
+  ldx #$3010
+  jsr MagiVramUpload
+
+  ; BG1 map -> word $3400.
+  lda #<MagiUiMap.B
+  sta dmaSrc
+  lda #>MagiUiMap.B
+  sta dmaSrc+1
+  lda #:MagiUiMap.B
+  sta dmaBank
+  lda #$00
+  sta dmaSize
+  lda #$08
+  sta dmaSize+1
+  ldx #MAGI_BG1_MAP
+  jsr MagiVramUpload
+
+  ; BG2 map -> word $3800.
+  lda #<MagiCellMap.B
+  sta dmaSrc
+  lda #>MagiCellMap.B
+  sta dmaSrc+1
+  lda #:MagiCellMap.B
+  sta dmaBank
+  lda #$00
+  sta dmaSize
+  lda #$08
+  sta dmaSize+1
+  ldx #MAGI_BG2_MAP
+  jsr MagiVramUpload
+
+  ; BG3 map -> word $3C00 (pre-filled with a full heat waterfall).
+  lda #<MagiHeatMap.B
+  sta dmaSrc
+  lda #>MagiHeatMap.B
+  sta dmaSrc+1
+  lda #:MagiHeatMap.B
+  sta dmaBank
+  lda #$00
+  sta dmaSize
+  lda #$08
+  sta dmaSize+1
+  ldx #MAGI_BG3_MAP
+  jsr MagiVramUpload
+
+  ; Mode 1: BG1/BG2 4bpp, BG3 2bpp, 8x8 tiles.
+  lda #$01
+  sta $2105
+  stz $2106
+  lda #$34              ; BG1 map $3400, 32x32
+  sta $2107
+  lda #$38              ; BG2 map $3800
+  sta $2108
+  lda #$3C              ; BG3 map $3C00
+  sta $2109
+  stz $210A
+  lda #$30              ; BG1 char $0000, BG2 char $3000
+  sta $210B
+  lda #$03              ; BG3 char $3000
+  sta $210C
+  stz $210D
+  stz $210D
+  stz $210E
+  stz $210E
+  stz $210F
+  stz $210F
+  stz $2110
+  stz $2110
+  stz $2111
+  stz $2111
+  stz $2112
+  stz $2112
+  stz $211A
+  stz $2133
+  stz $2130
+  stz $2131
+
+  lda #$17              ; BG1 + BG2 + BG3 + OBJ on the main screen
+  sta $212C
+  stz $212D
+
+  stz magiPending
+  stz frameIndex
+  stz frameIndex+1
+  rts
+
+; Upload dmaSrc/dmaBank/dmaSize (bytes) to the VRAM word address in X.
+MagiVramUpload:
+  rep #$20
+  txa
+  sta $2116
+  sep #$20
+  jmp DmaBankToVram
 
 ; A = 0 for 88x77 Lissajous, or the descriptor scale for precomputed scenes.
 SetMode7:
@@ -1259,6 +1421,14 @@ UpdateScene:
 UpdateSceneFrameOk:
   jsr QueueFrame
 
+  ; Pulse Analyzer: request this frame's BG2/BG3 cell writes and BG3 scroll.
+  lda sceneFlags
+  and #$08
+  beq UpdateSceneNoMagi
+  lda #1
+  sta magiPending
+UpdateSceneNoMagi:
+
   ; Vector City horizontal drift and vertical bob.
   lda sceneFlags
   and #$02
@@ -1378,10 +1548,12 @@ AnimateTitleDone:
   rts
 
 InitTitle:
-  lda #$8F
-  sta $2100
+  ; Same ordering as StartScene: no NMI may re-enable the display while the
+  ; selector maps and font are being uploaded.
   stz $4200
   stz $420C
+  lda #$8F
+  sta $2100
   jsr InitOam
   stz oamDirty
   stz swapRequest
@@ -1486,7 +1658,7 @@ InitTitle:
 ApplyTheme:
   stz $420C
 
-  ; Background palette, CGRAM 0..31.
+  ; Background palette, CGRAM 0..31 (64 colours for the Pulse Analyzer).
   stz $2121
   rep #$30
   lda themeIndex
@@ -1495,20 +1667,45 @@ ApplyTheme:
   tax
   sep #$20
   lda sceneIndex
+  cmp #1
+  beq ApplyThemeMagi
   cmp #5
   beq ApplyThemeNeon
   lda.l ThemeBgPtrs,x
   sta dmaSrc
   lda.l ThemeBgPtrs+1,x
   sta dmaSrc+1
+  txa                    ; X is theme*2 for the pointers, theme for the banks
+  lsr a
+  tax
   lda.l ThemeBgBanks,x
   sta dmaBank
   bra ApplyThemeBgUpload
+ApplyThemeMagi:
+  ; The console owns CGRAM 0..63: eight BG3 heat ramps, then the BG1 and BG2
+  ; 4bpp palettes.
+  lda.l ThemeBgMagiPtrs,x
+  sta dmaSrc
+  lda.l ThemeBgMagiPtrs+1,x
+  sta dmaSrc+1
+  txa
+  lsr a
+  tax
+  lda.l ThemeBgMagiBanks,x
+  sta dmaBank
+  lda #$80
+  sta dmaSize
+  stz dmaSize+1
+  jsr LoadPaletteBankCpu
+  bra ApplyThemeObj
 ApplyThemeNeon:
   lda.l ThemeBgNeonPtrs,x
   sta dmaSrc
   lda.l ThemeBgNeonPtrs+1,x
   sta dmaSrc+1
+  txa
+  lsr a
+  tax
   lda.l ThemeBgNeonBanks,x
   sta dmaBank
 ApplyThemeBgUpload:
@@ -1518,6 +1715,7 @@ ApplyThemeBgUpload:
   jsr LoadPaletteBankCpu
 
   ; Object palettes, CGRAM 128..255.
+ApplyThemeObj:
   lda #$80
   sta $2121
   rep #$30
@@ -1530,6 +1728,9 @@ ApplyThemeBgUpload:
   sta dmaSrc
   lda.l ThemeObjPtrs+1,x
   sta dmaSrc+1
+  txa
+  lsr a
+  tax
   lda.l ThemeObjBanks,x
   sta dmaBank
   lda #$00
@@ -1821,6 +2022,15 @@ NmiNoFrame:
   stz oamDirty
 NmiNoOam:
 
+  lda magiPending
+  beq NmiNoMagi
+  lda sceneFlags
+  and #$08
+  beq NmiNoMagi
+  jsr MagiNmiUpdate
+  stz magiPending
+NmiNoMagi:
+
   lda m7ScrollX
   sta $210D
   lda m7ScrollX+1
@@ -1840,6 +2050,66 @@ NmiNoOam:
   pla
   plp
   rti
+
+; =============================================================================
+;  Pulse Analyzer: apply one frame of BG2/BG3 cell writes during vblank
+;
+;  Each frame's list is a byte count followed by (VRAM word address, map
+;  entry) pairs.  Only cells that change are listed, so a typical frame is a
+;  couple of dozen 16-bit writes; VMAIN is left in the 1-word increment mode.
+; =============================================================================
+MagiNmiUpdate:
+  ; BG3 vertical scroll: the spectrum waterfall moves down two pixels a frame.
+  rep #$30
+  lda frameIndex
+  and #$00FF
+  tax
+  sep #$20
+  lda.l MagiScroll,x
+  sta $2112
+  stz $2112
+
+  ; 24-bit pointer to this frame's write list (three bytes per frame).
+  ; The 65816 only has long,X addressing, so the entry index lives in X.
+  rep #$20
+  txa
+  sta magiTemp
+  asl a
+  clc
+  adc magiTemp
+  tax
+  sep #$20
+  lda.l MagiUpdatePtrs,x
+  sta magiPtr
+  lda.l MagiUpdatePtrs+1,x
+  sta magiPtr+1
+  lda.l MagiUpdatePtrs+2,x
+  sta magiPtr+2
+
+  lda #$80
+  sta $2115
+  ldy #$0000
+  lda [magiPtr],y
+  sta magiCount
+  beq MagiNmiDone
+  iny
+MagiNmiLoop:
+  lda [magiPtr],y
+  sta $2116
+  iny
+  lda [magiPtr],y
+  sta $2117
+  iny
+  lda [magiPtr],y
+  sta $2118
+  iny
+  lda [magiPtr],y
+  sta $2119
+  iny
+  dec magiCount
+  bne MagiNmiLoop
+MagiNmiDone:
+  rts
 
 ; =============================================================================
 ;  Mode 7 grid drawing (Lissajous)

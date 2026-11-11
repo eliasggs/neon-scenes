@@ -19,6 +19,8 @@ import math
 import random
 from pathlib import Path
 
+from generate_assets import RAW_GLYPHS, glyph_pixels
+
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "src"
 
@@ -419,33 +421,6 @@ def make_planet_bg() -> list[list[int]]:
             elif 13 < d <= 17:
                 img[y][x] = max(img[y][x], 2)
     add_stars(img, 150, 11)
-    return img
-
-
-def make_pulse_bg() -> list[list[int]]:
-    img = new_image(88, 77)
-    # top glow
-    for y in range(8):
-        c = 2 if y < 2 else 1
-        for x in range(88):
-            img[y][x] = c
-    # horizontal grid
-    for y in range(8, 77, 8):
-        c = 2 if (y // 8) % 4 == 0 else 1
-        for x in range(88):
-            img[y][x] = c
-    # vertical grid / bar slots
-    for x in range(8, 88, 8):
-        for y in range(8, 77):
-            if img[y][x] == 0:
-                img[y][x] = 1
-    # baseline and frame
-    for x in range(88):
-        img[62][x] = 3
-        img[69][x] = max(img[69][x], 2)
-    for y in range(77):
-        img[y][0] = max(img[y][0], 2)
-        img[y][87] = max(img[y][87], 2)
     return img
 
 
@@ -1162,56 +1137,6 @@ def holo_frames() -> list[bytes]:
     return frames
 
 
-def pulse_frames() -> list[bytes]:
-    xs = [20 + i * 23 for i in range(10)]
-    baseline = 184
-    levels = [[0] * FRAME_COUNT for _ in range(10)]
-    for i in range(10):
-        for f in range(FRAME_COUNT):
-            t = f / FRAME_COUNT
-            v = (0.50
-                 + 0.22 * math.sin(i * 0.55 + 2 * math.pi * t * 2)
-                 + 0.16 * math.sin(i * 1.70 - 2 * math.pi * t * 3)
-                 + 0.12 * math.sin(i * 3.20 + 2 * math.pi * t * 5))
-            levels[i][f] = max(0, min(4, int(v * 5)))
-    peaks = [[0] * FRAME_COUNT for _ in range(10)]
-    for i in range(10):
-        for f in range(FRAME_COUNT):
-            peaks[i][f] = max(levels[i][(f - k) % FRAME_COUNT] for k in range(0, 14))
-    frames = []
-    for f in range(FRAME_COUNT):
-        fr = Frame()
-        t = f / FRAME_COUNT
-        for i, x in enumerate(xs):
-            lv = levels[i][f]
-            for b in range(lv):
-                y = baseline - 16 * (b + 1)
-                pal = (4, 3, 2, 1)[b]
-                fr.add(x, y, BAR16, pal, large=True)
-            cap_y = baseline - 16 * lv - 4
-            fr.add(x + 4, cap_y, STAR, 0)
-            pk = peaks[i][f]
-            fr.add(x + 4, baseline - 16 * pk - 8, STAR, 7)
-        # waveform
-        for i in range(24):
-            x = 8 + i * 10
-            y = (204
-                 + 12 * math.sin(i * 0.55 + 2 * math.pi * t * 3)
-                 + 4 * math.sin(i * 1.70 - 2 * math.pi * t * 5))
-            fr.add(x, int(round(y)), DOT_SMALL if i % 2 else DOT_MID, 6)
-        # BPM pulse ring
-        beat = (f % 30) / 30.0
-        rr = 15 + 11 * (1.0 - beat)
-        pal = 0 if beat < 0.55 else 7
-        for j in range(12):
-            a = 2.0 * math.pi * j / 12
-            x = 128 + int(round(rr * 2.0 * math.cos(a)))
-            y = 48 + int(round(rr * 0.55 * math.sin(a)))
-            fr.add(x, y, DOT_SMALL, pal)
-        frames.append(fr.data())
-    return frames
-
-
 def city_frames() -> list[bytes]:
     frames = []
     rnd = random.Random(41)
@@ -1313,6 +1238,670 @@ def atomic_frames() -> list[bytes]:
 
 
 # ---------------------------------------------------------------------------
+# Pulse Analyzer: NERV "MAGI-01" monitoring panel (Mode 1 interface)
+#
+# The other scenes are Mode 7 pictures with a sprite layer on top.  The
+# references for this one are dense monitoring consoles, so it is built the
+# other way round: a real 256x224 tiled interface on BG1 (crisp 5x7 text at a
+# 6px pitch), the animated bar readouts on BG2 and the scrolling spectrum
+# matrix on BG3.  Sprites are only used for the two vector displays (the
+# oscilloscope trace and the rotating A.T. field octahedron), which keeps the
+# OAM budget small.
+#
+# CGRAM is split for this scene: BG3 uses 2bpp palettes 0..7 (colours 0..31),
+# BG1 uses 4bpp palette 2 (32..47) and BG2 uses palette 3 (48..63).  OBJ keeps
+# 128..255 as usual.  All four colour themes have their own 64-colour MAGI
+# palette so the panel recolours coherently with the sprite layer.
+# ---------------------------------------------------------------------------
+MAGI_FRAMES = 128                # 2 s at 60 Hz; the BG3 floor wraps exactly
+MAGI_W, MAGI_H = 256, 224
+
+# Dynamic areas, all aligned to the 8x8 BG cell grid.
+MAGI_BAR_RECT = (8, 128, 71, 183)        # 8 VU bars, 7 cells tall
+MAGI_SYNC_RECT = (8, 56, 71, 63)         # horizontal sync-rate bar (8 cells)
+MAGI_POWER_RECT = (136, 184, 167, 191)   # horizontal power bar (4 cells)
+MAGI_HEAT_RECT = (184, 128, 247, 183)    # spectrum matrix (8x7 cells)
+
+# VRAM map base addresses (word addresses, also baked into the per-frame
+# VRAM update lists).
+MAGI_BG1_MAP_ADDR = 0x3400
+MAGI_BG2_MAP_ADDR = 0x3800
+MAGI_BG3_MAP_ADDR = 0x3C00
+
+MAGI_UI_PAL = 2                  # BG1 4bpp palette -> CGRAM 32..47
+MAGI_BAR_PAL = 3                 # BG2 4bpp palette -> CGRAM 48..63
+MAGI_HEAT_PALETTES = 8           # BG3 2bpp palettes 0..7 -> CGRAM 0..31
+
+# BG1: panel furniture, text and warning colours.  Index 0 is transparent.
+MAGI_UI_COLORS = [
+    "000000", "050200", "0E0600", "1A0C00",
+    "2A1200", "FF5500", "FF7700", "FFAA33",
+    "FFCC00", "FFE9A0", "FFFFFF", "A83200",
+    "8A1400", "FF2020", "FF0000", "66FF99",
+]
+
+# BG2: bar troughs, lit LED segments and the horizontal gauges.
+MAGI_BAR_COLORS = [
+    "000000", "2A0C00", "4A1400", "FF5500",
+    "FF7700", "FFAA00", "FFCC00", "FFE9A0",
+    "FF2020", "FF0000", "FFFFFF", "8A1400",
+    "000000", "66FF99", "B03A00", "FFD060",
+]
+
+# BG3: eight 4-colour heat ramps (transparent gap, dim, body, highlight).
+MAGI_HEAT_COLORS = [
+    ("1A0900", "2A0C00", "3A1000"),
+    ("2A0C00", "3A1000", "5A1A00"),
+    ("4A1400", "6A2000", "8A2800"),
+    ("6A2000", "992C00", "B03600"),
+    ("992C00", "CC3A00", "FF5500"),
+    ("CC3A00", "FF6600", "FF8800"),
+    ("FF8800", "FFB030", "FFD060"),
+    ("FFB030", "FFE070", "FFFFFF"),
+]
+
+# BG2 tile atlas indices (1..7; tile 0 is the BG3 heat cell at the same VRAM
+# character base and is never referenced by BG2).
+MAGI_CELL_OFF = 1
+MAGI_CELL_LOW = 2
+MAGI_CELL_MID = 3
+MAGI_CELL_HIGH = 4
+MAGI_CELL_PEAK = 5
+MAGI_CELL_TRACK = 6
+MAGI_CELL_FILL = 7
+MAGI_CELL_BLANK = 8        # fully transparent 4bpp tile for the rest of BG2
+MAGI_HEAT_BLANK = 1        # transparent 2bpp tile for the rest of BG3
+
+
+def magi_theme_color(rgb: tuple[int, int, int], theme: int) -> tuple[int, int, int]:
+    """Recolour one MAGI base colour for a theme, keeping the ramp coherent."""
+    if theme == 0:
+        return rgb
+    r, g, b = (v / 255.0 for v in rgb)
+    h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    if theme == 1:              # SOLAR: crimson/amber
+        h = (h - 0.055) % 1.0
+        s = min(1.0, s * 1.08)
+    elif theme == 2:            # AURORA: phosphor green/cyan
+        h = (0.30 + h * 1.05) % 1.0
+        s = min(1.0, s * 1.05)
+    else:                       # MONO: cool white phosphor monitor
+        lum = (0.299 * r + 0.587 * g + 0.114 * b) ** 0.80
+        return (int(round(min(1.0, lum) * 255)), int(round(min(1.0, lum) * 255)),
+                int(round(min(1.0, lum * 1.14) * 255)))
+    r, g, b = colorsys.hsv_to_rgb(h, s, v)
+    return tuple(int(round(x * 255)) for x in (r, g, b))
+
+
+def build_magi_palette(theme: int) -> list[int]:
+    """64 background colours: 32 heat ramps, then the UI and bar palettes.
+
+    BG1 uses 4bpp palette 2 (CGRAM 32..47) and BG2 palette 3 (48..63), so the
+    upload order here has to match MAGI_UI_PAL / MAGI_BAR_PAL.
+    """
+    out: list[int] = []
+    for ramp in MAGI_HEAT_COLORS:
+        out.append(0)
+        for c in ramp:
+            out.append(rgb555(*magi_theme_color(hx(c), theme)))
+    for c in MAGI_UI_COLORS:
+        out.append(rgb555(*magi_theme_color(hx(c), theme)))
+    for c in MAGI_BAR_COLORS:
+        out.append(rgb555(*magi_theme_color(hx(c), theme)))
+    assert len(out) == 64
+    return out
+
+
+MAGI_GLYPHS = {ch: glyph_pixels(ch, drop_shadow=False) for ch in RAW_GLYPHS}
+
+
+class MagiCanvas:
+    """Tiny indexed-pixel canvas used to paint the static console."""
+
+    def __init__(self, w: int = MAGI_W, h: int = MAGI_H) -> None:
+        self.w = w
+        self.h = h
+        self.px = [[0] * w for _ in range(h)]
+
+    def put(self, x: int, y: int, c: int) -> None:
+        if 0 <= x < self.w and 0 <= y < self.h:
+            self.px[y][x] = c
+
+    def rect(self, x0: int, y0: int, x1: int, y1: int, c: int) -> None:
+        for y in range(max(0, y0), min(self.h, y1 + 1)):
+            row = self.px[y]
+            for x in range(max(0, x0), min(self.w, x1 + 1)):
+                row[x] = c
+
+    def hline(self, x0: int, x1: int, y: int, c: int) -> None:
+        if 0 <= y < self.h:
+            for x in range(max(0, x0), min(self.w, x1 + 1)):
+                self.px[y][x] = c
+
+    def vline(self, x: int, y0: int, y1: int, c: int) -> None:
+        if 0 <= x < self.w:
+            for y in range(max(0, y0), min(self.h, y1 + 1)):
+                self.px[y][x] = c
+
+    def frame(self, x0: int, y0: int, x1: int, y1: int, c: int) -> None:
+        self.hline(x0, x1, y0, c)
+        self.hline(x0, x1, y1, c)
+        self.vline(x0, y0, y1, c)
+        self.vline(x1, y0, y1, c)
+
+    def text(self, x: int, y: int, s: str, c: int, scale: int = 1) -> None:
+        step = 6 * scale
+        for i, ch in enumerate(s):
+            grid = MAGI_GLYPHS.get(ch)
+            if grid is None:
+                continue
+            ox = x + i * step
+            for gy in range(8):
+                for gx in range(8):
+                    if not grid[gy][gx]:
+                        continue
+                    for sy in range(scale):
+                        for sx in range(scale):
+                            self.put(ox + gx * scale + sx, y + gy * scale + sy, c)
+
+    def text_right(self, xr: int, y: int, s: str, c: int, scale: int = 1) -> None:
+        self.text(xr - len(s) * 6 * scale, y, s, c, scale)
+
+    def text_center(self, x0: int, x1: int, y: int, s: str, c: int, scale: int = 1) -> None:
+        self.text(x0 + (x1 - x0 + 1 - len(s) * 6 * scale) // 2, y, s, c, scale)
+
+    def hazard(self, x0: int, y0: int, x1: int, y1: int, period: int = 6) -> None:
+        half = max(1, period // 2)
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                self.put(x, y, 5 if ((x - y) % period) < half else 1)
+
+    def panel(self, x0: int, y0: int, x1: int, y1: int, title: str,
+              right: str | None = None) -> None:
+        self.rect(x0, y0, x1, y1, 1)
+        self.rect(x0 + 1, y0 + 1, x1 - 1, y0 + 9, 2)
+        self.frame(x0, y0, x1, y1, 5)
+        self.hazard(x0 + 3, y0 + 2, x0 + 10, y0 + 9, period=4)
+        self.text(x0 + 14, y0 + 2, title, 6)
+        if right:
+            self.text_right(x1 - 4, y0 + 2, right, 8)
+        self.hline(x0 + 1, x1 - 1, y0 + 10, 4)
+
+
+def build_magi_bg1() -> MagiCanvas:
+    """Paint the static console: frames, labels, gauges and hazard stripes."""
+    c = MagiCanvas()
+    c.rect(0, 0, MAGI_W - 1, MAGI_H - 1, 1)
+
+    # -- header -------------------------------------------------------------
+    c.hazard(0, 0, MAGI_W - 1, 5, period=6)
+    c.rect(0, 6, MAGI_W - 1, 15, 2)
+    c.hline(0, MAGI_W - 1, 15, 5)
+    c.hazard(0, 6, 7, 15, period=4)
+    # The scene-name HUD sprites occupy x=8..119, y=7..14.
+    c.rect(120, 6, 183, 15, 5)
+    c.text(127, 7, "MAGI-01", 1)
+    c.text(190, 7, "800X600", 5)
+    c.rect(236, 8, 243, 13, 15)
+    c.rect(248, 6, 255, 15, 13)
+    c.rect(250, 9, 253, 12, 12)
+
+    # -- status banner ------------------------------------------------------
+    c.rect(0, 16, 175, 23, 2)
+    c.text(19, 16, "NORMAL OPERATION STATUS", 6)
+    c.hline(0, 175, 23, 4)
+    c.rect(180, 16, 255, 23, 1)
+    c.text(197, 16, "WARNING", 13)
+    c.hline(180, 255, 23, 13)
+    c.vline(179, 16, 23, 13)
+
+    # -- left column: sync rate --------------------------------------------
+    c.panel(0, 24, 79, 111, "SYNC RATE")
+    c.text(10, 36, "67.4%", 8, scale=2)
+    c.text(6, 66, "HARMONICS", 5)
+    c.text(6, 74, "NORMAL", 6)
+    c.rect(68, 75, 71, 78, 15)
+    c.text(6, 82, "02:EVA-01", 11)
+    c.text(6, 90, "PATTERN", 5)
+    c.text(6, 98, "BLUE", 8)
+
+    # -- left column: spectrum bars ----------------------------------------
+    c.panel(0, 112, 79, 199, "FREQ BAND")
+    for i in range(8):
+        c.vline(7 + i * 8, 130, 189, 4)
+    c.text(6, 188, "LOW", 6)
+    c.text(26, 188, "MID", 6)
+    c.text(48, 188, "HIGH", 6)
+    # -- centre: pattern analyser ------------------------------------------
+    c.panel(80, 24, 175, 111, "WAVEFORM")
+    c.rect(146, 25, 173, 33, 5)
+    c.text(149, 26, "LIVE", 12)
+    c.text(86, 36, "CODE 601", 5)
+    c.text_right(172, 36, "AUTO", 8)
+    c.frame(83, 43, 172, 100, 11)
+    for gx in range(92, 172, 8):
+        c.vline(gx, 44, 99, 4)
+    for gy in range(52, 100, 8):
+        c.hline(84, 171, gy, 4)
+    c.text(86, 102, "FREQ 440.0 HZ", 6)
+
+    # -- centre: A.T. field -------------------------------------------------
+    c.panel(80, 112, 175, 199, "A.T. FIELD", "3D")
+    c.frame(81, 125, 134, 191, 4)
+    c.text(136, 126, "SYSTEM", 5)
+    c.text(136, 134, "STATUS", 5)
+    c.rect(134, 144, 174, 161, 12)
+    c.frame(134, 144, 174, 161, 13)
+    c.text(136, 145, "SAFETY", 9)
+    c.text(139, 153, "FIRST", 9)
+    c.text(136, 166, "POWER", 5)
+    c.text(136, 174, "98.2%", 8)
+
+    # -- right column: MAGI consensus --------------------------------------
+    c.panel(176, 24, 255, 111, "MAGI", "3-CODE")
+    for name, y in (("MELCHIOR-1", 36), ("BALTHASAR-2", 54), ("CASPAR-3", 72)):
+        c.text(181, y, name, 6)
+        c.text(185, y + 8, "RESOLVED", 15)
+    c.hline(178, 253, 89, 4)
+    c.text(181, 91, "CONSENSUS", 5)
+    c.text_right(252, 91, "OK", 15)
+    c.text(181, 101, "CODE 399", 11)
+
+    # -- right column: spectrum matrix -------------------------------------
+    c.panel(176, 112, 255, 199, "SPECTRUM")
+    c.text_right(253, 114, "64", 8)
+    c.text(184, 188, "LOW", 6)
+    c.text(205, 188, "MID", 6)
+    c.text(228, 188, "HIGH", 6)
+
+    # -- status strip and footer -------------------------------------------
+    c.rect(0, 200, MAGI_W - 1, 207, 2)
+    c.hline(0, MAGI_W - 1, 207, 4)
+    c.hazard(0, 200, 7, 206, period=4)
+    c.text(12, 200, "A.T. FIELD ANALYZER", 5)
+    c.text(132, 200, "SYNC LOCK", 8)
+    c.text_right(252, 200, "SYS.01", 6)
+
+    c.rect(0, 208, MAGI_W - 1, 223, 2)
+    c.hline(0, MAGI_W - 1, 208, 5)
+    c.hazard(0, 209, 39, 222, period=6)
+    c.text(46, 209, "NERV TOKYO-3 HQ", 6)
+    c.text(46, 216, "CENTRAL DOGMA", 11)
+    c.text(180, 209, "14:46:25:41", 8)
+    c.text(180, 216, "SYS.01.VER", 5)
+    c.rect(250, 210, 255, 221, 13)
+
+    # -- transparent windows for the BG2/BG3 hardware layers ---------------
+    for (x0, y0, x1, y1) in (MAGI_BAR_RECT, MAGI_SYNC_RECT,
+                             MAGI_POWER_RECT, MAGI_HEAT_RECT):
+        c.rect(x0, y0, x1, y1, 0)
+    # Inset borders around the wells.  The bottom edges are deliberately left
+    # out so the scale labels underneath stay clear of them.
+    c.hline(7, 72, 127, 4)
+    c.vline(7, 127, 183, 4)
+    c.vline(72, 127, 183, 4)
+    c.frame(7, 55, 72, 64, 4)
+    c.frame(135, 183, 168, 192, 4)
+    c.hline(183, 248, 127, 4)
+    c.vline(183, 127, 183, 4)
+    c.vline(248, 127, 183, 4)
+    return c
+
+
+def magi_tile_4bpp(grid: list[list[int]]) -> bytes:
+    rows01 = bytearray()
+    rows23 = bytearray()
+    for y in range(8):
+        planes = [0, 0, 0, 0]
+        for x in range(8):
+            c = grid[y][x]
+            for b in range(4):
+                if c & (1 << b):
+                    planes[b] |= 0x80 >> x
+        rows01 += bytes((planes[0], planes[1]))
+        rows23 += bytes((planes[2], planes[3]))
+    return bytes(rows01 + rows23)
+
+
+def magi_tile_2bpp(grid: list[list[int]]) -> bytes:
+    out = bytearray()
+    for y in range(8):
+        p0 = 0
+        p1 = 0
+        for x in range(8):
+            c = grid[y][x]
+            if c & 1:
+                p0 |= 0x80 >> x
+            if c & 2:
+                p1 |= 0x80 >> x
+        out += bytes((p0, p1))
+    return bytes(out)
+
+
+def magi_pack_ui(canvas: MagiCanvas) -> tuple[list[list[list[int]]], list[int]]:
+    """Slice the 256x224 canvas into unique 8x8 tiles plus a map.
+
+    The map is emitted as a full 32x32 screen: rows 28..31 exist only to keep
+    the last scanline clean (they are transparent), and they make the map a
+    round 2 KiB for the VRAM upload.
+    """
+    tiles: list[list[list[int]]] = []
+    lookup: dict[tuple, int] = {}
+    entries: list[int] = []
+    blank = tuple(tuple(0 for _ in range(8)) for _ in range(8))
+    for ty in range(32):
+        for tx in range(32):
+            if ty < MAGI_H // 8:
+                grid = tuple(tuple(canvas.px[ty * 8 + y][tx * 8 + x] for x in range(8))
+                             for y in range(8))
+            else:
+                grid = blank
+            idx = lookup.get(grid)
+            if idx is None:
+                idx = len(tiles)
+                if idx >= 768:
+                    raise ValueError("MAGI BG1 tileset overflows VRAM")
+                lookup[grid] = idx
+                tiles.append([list(row) for row in grid])
+            entries.append(idx | (MAGI_UI_PAL << 10))
+    return tiles, entries
+
+
+def magi_bar_cell_tiles() -> list[list[list[int]]]:
+    """The seven BG2 tiles, in index order (1..7)."""
+    def blank(fill: int) -> list[list[int]]:
+        return [[fill] * 8 for _ in range(8)]
+
+    off = blank(12)
+    for y in range(8):
+        for x in range(1, 7):
+            off[y][x] = 1
+    for x in range(1, 7):
+        off[7][x] = 2
+
+    def lit(fill: int, top: int, bottom: int) -> list[list[int]]:
+        grid = blank(12)
+        for y in range(8):
+            for x in range(1, 7):
+                grid[y][x] = fill
+        for x in range(1, 7):
+            grid[0][x] = top
+            grid[7][x] = bottom
+        return grid
+
+    peak = blank(12)
+    for y in range(1, 3):
+        for x in range(1, 7):
+            peak[y][x] = 10
+    for x in range(1, 7):
+        peak[3][x] = 11
+        peak[7][x] = 11
+
+    def gauge(fill: int, top: int, shade: int) -> list[list[int]]:
+        grid = blank(12)
+        for y in range(2, 6):
+            for x in range(8):
+                grid[y][x] = fill
+        for x in range(8):
+            grid[2][x] = top
+            grid[5][x] = shade
+        return grid
+
+    return [
+        off,
+        lit(3, 4, 14),
+        lit(6, 7, 5),
+        lit(8, 10, 9),
+        peak,
+        gauge(1, 2, 12),
+        gauge(3, 4, 14),
+        blank(0),
+    ]
+
+
+def magi_cell_map() -> list[int]:
+    """Static BG2 map: transparent everywhere except the dynamic wells.
+
+    Tile 0 at the shared character base is the BG3 heat cell, so every BG2
+    cell that is not a bar must point at the dedicated blank tile instead;
+    map entry 0 would otherwise paint the heat cell as a 4bpp block.
+    """
+    entries = [MAGI_CELL_BLANK | (MAGI_BAR_PAL << 10)] * 1024
+    for (x0, y0, x1, y1), tile in (
+            (MAGI_BAR_RECT, MAGI_CELL_OFF),
+            (MAGI_SYNC_RECT, MAGI_CELL_TRACK),
+            (MAGI_POWER_RECT, MAGI_CELL_TRACK)):
+        for cy in range(y0 // 8, y1 // 8 + 1):
+            for cx in range(x0 // 8, x1 // 8 + 1):
+                entries[cy * 32 + cx] = tile | (MAGI_BAR_PAL << 10)
+    return entries
+
+
+def magi_heat_tile() -> list[list[int]]:
+    """One heat-matrix cell: a 7x7 block with a 1px transparent gap."""
+    grid = [[0] * 8 for _ in range(8)]
+    for y in range(7):
+        for x in range(7):
+            grid[y][x] = 2
+    for x in range(7):
+        grid[0][x] = 3
+    return grid
+
+
+def magi_heat_levels(t: int) -> list[int]:
+    """Eight spectrum columns (0..7) for animation time t."""
+    u = (t % MAGI_FRAMES) / MAGI_FRAMES
+    out = []
+    for c in range(MAGI_HEAT_PALETTES):
+        v = (3.1
+             + 1.5 * math.sin(2 * math.pi * 2 * u + c * 0.90)
+             + 1.0 * math.sin(2 * math.pi * 3 * u - c * 1.70)
+             + 0.7 * math.sin(2 * math.pi * 5 * u + c * 2.30))
+        if c < 2:                       # sub-bass columns run hotter
+            v += 1.2
+        out.append(max(0, min(7, int(round(v)))))
+    return out
+
+
+def magi_heat_map() -> list[int]:
+    """Initial BG3 map: a complete heat waterfall so the first frame is full."""
+    entries = [MAGI_HEAT_BLANK] * 1024
+    for row in range(32):
+        levels = magi_heat_levels(row * 4)
+        for c in range(MAGI_HEAT_PALETTES):
+            entries[row * 32 + 23 + c] = levels[c] << 10
+    return entries
+
+
+def magi_bar_levels(f: int) -> list[int]:
+    t = f / MAGI_FRAMES
+    out = []
+    for i in range(8):
+        v = (0.50
+             + 0.28 * math.sin(2 * math.pi * 2 * t + i * 0.75)
+             + 0.18 * math.sin(2 * math.pi * 3 * t - i * 1.35)
+             + 0.12 * math.sin(2 * math.pi * 5 * t + i * 2.20))
+        out.append(max(0, min(7, int(round(v * 7)))))
+    return out
+
+
+def magi_bar_peaks(levels: list[list[int]]) -> list[list[int]]:
+    """Peak-hold over the last ten frames, evaluated cyclically."""
+    n = MAGI_FRAMES
+    return [[max(levels[(f - k) % n][i] for k in range(10)) for i in range(8)]
+            for f in range(n)]
+
+
+def magi_sync_cells(f: int) -> int:
+    t = f / MAGI_FRAMES
+    v = 4.0 + 3.1 * math.sin(2 * math.pi * t + 0.4) + 1.1 * math.sin(2 * math.pi * 3 * t)
+    return max(0, min(8, int(round(v))))
+
+
+def magi_power_cells(f: int) -> int:
+    t = f / MAGI_FRAMES
+    v = 2.1 + 1.6 * math.sin(2 * math.pi * 2 * t + 1.1)
+    return max(0, min(4, int(round(v))))
+
+
+def magi_frames() -> list[bytes]:
+    """The two vector displays: oscilloscope trace + rotating octahedron."""
+    nodes = [(0, 1, 0), (1, 0, 0), (0, -1, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1)]
+    edges = [(0, 1), (0, 3), (0, 4), (0, 5), (2, 1), (2, 3), (2, 4), (2, 5),
+             (1, 4), (4, 3), (3, 5), (5, 1)]
+    frames = []
+    cx, cy = 108.0, 159.0
+    for f in range(MAGI_FRAMES):
+        fr = Frame()
+        t = f / MAGI_FRAMES
+        # Oscilloscope: a two-tone trace drifting through two harmonics.
+        for i in range(28):
+            u = i / 27.0
+            x = 85 + i * 3.15
+            v = (0.62 * math.sin(2 * math.pi * 2 * t + u * 7.4)
+                 + 0.38 * math.sin(2 * math.pi * 3 * t - u * 4.1))
+            y = 71 - 16.0 * v
+            tile = DOT_MID if i % 7 == 0 else DOT_SMALL
+            fr.add(int(round(x)), int(round(y)), tile, 5)
+        # A.T. field octahedron, one full yaw turn and a periodic pitch sway.
+        ay = 2 * math.pi * t
+        ax = 0.55 + 0.45 * math.sin(2 * math.pi * t)
+        ca, sa = math.cos(ay), math.sin(ay)
+        cb, sb = math.cos(ax), math.sin(ax)
+        pts = []
+        for (nx, ny, nz) in nodes:
+            x1 = nx * ca + nz * sa
+            z1 = -nx * sa + nz * ca
+            y2 = ny * cb - z1 * sb
+            z2 = ny * sb + z1 * cb
+            d = 2.6
+            # Slight vertical stretch: the vector bay is taller than it is
+            # wide, and an octahedron reads better when it fills the frame.
+            px = cx + (x1 / (z2 + d)) * 56.0
+            py = cy + (y2 / (z2 + d)) * 72.0
+            pts.append((px, py, z2))
+        for (a, b) in edges:
+            ax0, ay0, az0 = pts[a]
+            bx0, by0, bz0 = pts[b]
+            pal = 7 if (az0 + bz0) * 0.5 > 0.05 else 4
+            for k in range(1, 6):
+                u = k / 6.0
+                fr.add(int(round(ax0 + (bx0 - ax0) * u)),
+                       int(round(ay0 + (by0 - ay0) * u)), DOT_SMALL, pal)
+        for (px, py, z) in pts:
+            fr.add(int(round(px)) - 4, int(round(py)) - 4, DOT_LARGE,
+                   7 if z > 0.05 else 4)
+        frames.append(fr.data())
+    return frames
+
+
+def magi_updates() -> tuple[bytes, list[bytes], list[int]]:
+    """Per-frame BG2/BG3 cell writes and the BG3 scroll byte.
+
+    Only cells that actually change are emitted, so the NMI cost stays around
+    two dozen VRAM word writes per frame.
+    """
+    levels = [magi_bar_levels(f) for f in range(MAGI_FRAMES)]
+    peaks = magi_bar_peaks(levels)
+    scrolls = bytes((256 - 2 * f) & 0xFF for f in range(MAGI_FRAMES))
+
+    def entry(tile: int) -> int:
+        return tile | (MAGI_BAR_PAL << 10)
+
+    prev: dict[tuple, int] = {}
+    for i in range(8):
+        for r in range(7):
+            prev[("bar", i, r)] = MAGI_CELL_OFF
+    for c in range(8):
+        prev[("sync", c)] = MAGI_CELL_TRACK
+    for c in range(4):
+        prev[("power", c)] = MAGI_CELL_TRACK
+
+    def top_row(frame: int) -> int:
+        v = (256 - 2 * frame) & 0xFF
+        return ((128 + v) & 0xFF) >> 3
+
+    blobs: list[bytes] = []
+    heat_row = None
+    counts = []
+    for f in range(MAGI_FRAMES):
+        upd: list[tuple[int, int]] = []
+        lv = levels[f]
+        pk = peaks[f]
+        for i in range(8):
+            for r in range(7):
+                if r < lv[i]:
+                    tile = MAGI_CELL_LOW if r < 3 else (
+                        MAGI_CELL_MID if r < 5 else MAGI_CELL_HIGH)
+                elif r == pk[i] - 1 and pk[i] > lv[i]:
+                    tile = MAGI_CELL_PEAK
+                else:
+                    tile = MAGI_CELL_OFF
+                if prev[("bar", i, r)] != tile:
+                    prev[("bar", i, r)] = tile
+                    addr = MAGI_BG2_MAP_ADDR + (22 - r) * 32 + (1 + i)
+                    upd.append((addr, entry(tile)))
+
+        sc = magi_sync_cells(f)
+        for c in range(8):
+            tile = MAGI_CELL_FILL if c < sc else MAGI_CELL_TRACK
+            if prev[("sync", c)] != tile:
+                prev[("sync", c)] = tile
+                upd.append((MAGI_BG2_MAP_ADDR + 7 * 32 + (1 + c), entry(tile)))
+
+        pc = magi_power_cells(f)
+        for c in range(4):
+            tile = MAGI_CELL_FILL if c < pc else MAGI_CELL_TRACK
+            if prev[("power", c)] != tile:
+                prev[("power", c)] = tile
+                upd.append((MAGI_BG2_MAP_ADDR + 23 * 32 + (17 + c), entry(tile)))
+
+        row = top_row(f + 4)
+        if row != heat_row:
+            heat_row = row
+            for c, level in enumerate(magi_heat_levels((f + 4) % MAGI_FRAMES)):
+                upd.append((MAGI_BG3_MAP_ADDR + row * 32 + 23 + c, level << 10))
+
+        if len(upd) > 255:
+            raise ValueError(f"MAGI frame {f} needs {len(upd)} VRAM writes")
+        counts.append(len(upd))
+        blob = bytearray([len(upd)])
+        for addr, value in upd:
+            blob += bytes((addr & 0xFF, addr >> 8, value & 0xFF, value >> 8))
+        blobs.append(bytes(blob))
+    return scrolls, blobs, counts
+
+
+class MagiAssets:
+    def __init__(self) -> None:
+        self.canvas = build_magi_bg1()
+        self.ui_tiles, self.ui_map = magi_pack_ui(self.canvas)
+        self.cell_tiles = magi_bar_cell_tiles()
+        self.cell_map = magi_cell_map()
+        self.heat_tile = magi_heat_tile()
+        self.heat_map = magi_heat_map()
+        self.frames = magi_frames()
+        self.scrolls, self.updates, self.update_counts = magi_updates()
+
+    def ui_tile_bytes(self) -> bytes:
+        return b"".join(magi_tile_4bpp(g) for g in self.ui_tiles)
+
+    def cell_tile_bytes(self) -> bytes:
+        return b"".join(magi_tile_4bpp(g) for g in self.cell_tiles)
+
+    def heat_tile_bytes(self) -> bytes:
+        blank = [[0] * 8 for _ in range(8)]
+        return magi_tile_2bpp(self.heat_tile) + magi_tile_2bpp(blank)
+
+    @staticmethod
+    def map_bytes(entries: list[int]) -> bytes:
+        out = bytearray()
+        for e in entries:
+            out += bytes((e & 0xFF, e >> 8))
+        return bytes(out)
+
+
+# ---------------------------------------------------------------------------
 # Selector tilemaps
 # ---------------------------------------------------------------------------
 SCENE_NAMES = ["HOLO PLANET", "PULSE ANALYZER", "VECTOR CITY", "ATOMIC",
@@ -1384,27 +1973,44 @@ def ptr_bytes(label: str) -> str:
 # Layout / main
 # ---------------------------------------------------------------------------
 class BankAllocator:
+    """Pack blobs into 32 KiB banks without ever splitting one in two.
+
+    A DMA source address only has 16 bits, so every uploaded blob (and every
+    OAM frame) has to live inside a single bank.  Normal blobs use first fit so
+    the holes left by the large Mode 7 pictures are reused; ``at_bank_start``
+    blobs always open a fresh bank.
+    """
+
     def __init__(self, first: int) -> None:
-        self.bank = first
-        self.offset = 0
+        self.first = first
         self.banks: dict[int, list[tuple[str, bytes, str]]] = {}
+        self.used: dict[int, int] = {}
         self.locations: dict[str, tuple[int, int]] = {}
 
-    def _new_bank(self) -> None:
-        self.bank += 1
-        self.offset = 0
+    def _new_bank(self) -> int:
+        bank = max(self.banks) + 1 if self.banks else self.first
+        if bank > 15:
+            raise ValueError(f"scene data does not fit in 16 banks (needs bank {bank})")
+        self.banks[bank] = []
+        self.used[bank] = 0
+        return bank
+
+    def _free(self, bank: int) -> int:
+        return 0x8000 - self.used[bank]
 
     def add(self, label: str, data: bytes, kind: str = "db", at_bank_start: bool = False) -> None:
-        if at_bank_start:
-            if self.offset != 0:
-                self._new_bank()
-        if self.offset + len(data) > 0x8000:
-            self._new_bank()
-        if self.offset + len(data) > 0x8000:
+        if len(data) > 0x8000:
             raise ValueError(f"item {label} ({len(data)} bytes) does not fit a bank")
-        self.locations[label] = (self.bank, self.offset)
-        self.banks.setdefault(self.bank, []).append((label, data, kind))
-        self.offset += len(data)
+        if at_bank_start:
+            bank = self._new_bank()
+        else:
+            fits = [b for b in sorted(self.banks) if self._free(b) >= len(data)]
+            bank = fits[0] if fits else self._new_bank()
+        if self._free(bank) < len(data):
+            raise ValueError(f"item {label} does not fit in bank {bank}")
+        self.locations[label] = (bank, self.used[bank])
+        self.banks[bank].append((label, data, kind))
+        self.used[bank] += len(data)
 
 
 def main() -> None:
@@ -1412,19 +2018,31 @@ def main() -> None:
 
     themes_bg = [build_bg_palette(t) for t in range(4)]
     themes_neon = [build_neon_bg_palette(t) for t in range(4)]
+    themes_magi = [build_magi_palette(t) for t in range(4)]
     themes_obj = [[c for pal in build_obj_palettes(t) for c in pal] for t in range(4)]
     extra_tiles = build_extra_tiles()
 
-    bg_builders = [make_planet_bg, make_pulse_bg, make_city_bg, make_atomic_bg,
+    magi = MagiAssets()
+    print(f"MAGI: BG1 {len(magi.ui_tiles)} tiles, BG2 {len(magi.cell_tiles)} tiles, "
+          f"updates {min(magi.update_counts)}..{max(magi.update_counts)} per frame "
+          f"({sum(magi.update_counts)} total)")
+
+    bg_builders = [make_planet_bg, None, make_city_bg, make_atomic_bg,
                    make_lissajous_bg]
-    frame_builders = [holo_frames, pulse_frames, city_frames, atomic_frames,
+    frame_builders = [holo_frames, None, city_frames, atomic_frames,
                       None, neon_city_frames]
-    bg_data = [build_m7(bg()) for bg in bg_builders]
+    bg_data = [build_m7(bg()) if bg else [] for bg in bg_builders]
     bg_data.append(build_m7_plane(make_neon_city_plane()))
     frame_data = [builder() if builder else None for builder in frame_builders]
+    frame_data[1] = magi.frames
     for scene, frames in enumerate(frame_data):
         if frames is None:
             continue
+        want = MAGI_FRAMES if scene == 1 else FRAME_COUNT
+        if scene == 5:
+            want = len(frames)
+        if len(frames) != want:
+            raise ValueError(f"scene {scene} has {len(frames)} frames, expected {want}")
         for i, f in enumerate(frames):
             if len(f) != FRAME_SIZE:
                 raise ValueError(f"scene {scene} frame {i} has {len(f)} bytes")
@@ -1432,17 +2050,41 @@ def main() -> None:
     neon_scale_tbl, neon_shear_tbl, neon_v_tbls = neon_hdma_tables()
 
     alloc = BankAllocator(first=2)
-    alloc.add("ExtraTiles", extra_tiles, at_bank_start=True)
-    alloc.add("NeonScaleTable", neon_scale_tbl, at_bank_start=True)
+    bg_labels = []
+    # The Mode 7 pictures are the only blobs big enough to need a whole bank,
+    # so they go in first and everything else fills the holes afterwards.
+    for scene, bg in enumerate(bg_data):
+        label = f"SceneBg{scene}"
+        if bg:
+            alloc.add(label, b"".join(w.to_bytes(2, "little") for w in bg),
+                      kind="dw", at_bank_start=True)
+            bg_labels.append(label)
+        else:
+            # The Pulse Analyzer has no Mode 7 picture: its background is the
+            # tiled console uploaded by InitMagiScene instead.
+            bg_labels.append(None)
+
+    alloc.add("ExtraTiles", extra_tiles)
+    alloc.add("NeonScaleTable", neon_scale_tbl)
     alloc.add("NeonShearTable", neon_shear_tbl)
     for i, table in enumerate(neon_v_tbls):
         alloc.add(f"NeonVTable{i}", table)
-    bg_labels = []
+
+    # Pulse Analyzer console data.  These are all smaller than a bank, so the
+    # allocator packs them into the free space; every blob stays inside one
+    # bank, which is what the 65816 DMAs rely on.
+    alloc.add("MagiUiTiles", magi.ui_tile_bytes())
+    alloc.add("MagiUiMap", MagiAssets.map_bytes(magi.ui_map))
+    alloc.add("MagiCellTiles", magi.cell_tile_bytes())
+    alloc.add("MagiCellMap", MagiAssets.map_bytes(magi.cell_map))
+    alloc.add("MagiHeatTile", magi.heat_tile_bytes())
+    alloc.add("MagiHeatMap", MagiAssets.map_bytes(magi.heat_map))
+    alloc.add("MagiScroll", magi.scrolls)
+    for fi, blob in enumerate(magi.updates):
+        alloc.add(f"MagiUpdate{fi}", blob)
+
     frame_table_labels = []
-    for scene, bg in enumerate(bg_data):
-        label = f"SceneBg{scene}"
-        alloc.add(label, b"".join(w.to_bytes(2, "little") for w in bg), kind="dw", at_bank_start=True)
-        bg_labels.append(label)
+    for scene in range(SCENE_COUNT):
         frames = frame_data[scene]
         if frames is not None:
             ft_label = f"SceneFramePtrs{scene}"
@@ -1497,6 +2139,16 @@ def main() -> None:
     sh.append(f".DEFINE EXTRA_TILE_BYTES_LO ${extra_bytes & 0xFF:02X}")
     sh.append(f".DEFINE EXTRA_TILE_BYTES_HI ${extra_bytes >> 8:02X}")
     sh.append(f".DEFINE NEON_PHASES {NEON_PHASES}")
+    ui_tile_bytes = len(magi.ui_tiles) * 32
+    cell_tile_bytes = len(magi.cell_tiles) * 32
+    sh.append(f".DEFINE MAGI_FRAMES {MAGI_FRAMES}")
+    sh.append(f".DEFINE MAGI_UI_TILE_BYTES_LO ${ui_tile_bytes & 0xFF:02X}")
+    sh.append(f".DEFINE MAGI_UI_TILE_BYTES_HI ${ui_tile_bytes >> 8:02X}")
+    sh.append(f".DEFINE MAGI_CELL_TILE_BYTES_LO ${cell_tile_bytes & 0xFF:02X}")
+    sh.append(f".DEFINE MAGI_CELL_TILE_BYTES_HI ${cell_tile_bytes >> 8:02X}")
+    sh.append(f".DEFINE MAGI_BG1_MAP ${MAGI_BG1_MAP_ADDR:04X}")
+    sh.append(f".DEFINE MAGI_BG2_MAP ${MAGI_BG2_MAP_ADDR:04X}")
+    sh.append(f".DEFINE MAGI_BG3_MAP ${MAGI_BG3_MAP_ADDR:04X}")
     sh.append("")
 
     # Selector maps: index = scene * 2 + party
@@ -1531,6 +2183,14 @@ def main() -> None:
     sh.append("  .DW " + ", ".join(f"ThemeBgNeon{t}" for t in range(4)))
     sh.append("ThemeBgNeonBanks:")
     sh.append("  .DB " + ", ".join(f":ThemeBgNeon{t}" for t in range(4)))
+    for t in range(4):
+        sh.append(f"ThemeBgMagi{t}:")
+        sh.append(db_rows(palette_bytes(themes_magi[t])))
+        sh.append("")
+    sh.append("ThemeBgMagiPtrs:")
+    sh.append("  .DW " + ", ".join(f"ThemeBgMagi{t}" for t in range(4)))
+    sh.append("ThemeBgMagiBanks:")
+    sh.append("  .DB " + ", ".join(f":ThemeBgMagi{t}" for t in range(4)))
     sh.append("")
     sh.append("NeonVTablePtrs:")
     for i in range(NEON_PHASES):
@@ -1556,6 +2216,13 @@ def main() -> None:
             sh.append("  .DB $00, $00, $01, $58, $00, $00")
             sh.append(f"  .DW ${len(bg_data[4]) * 2:04X}")
             sh.append(f"  .DW SceneNameTable+{scene * 16}")
+        elif scene == 1:
+            # Tiled MAGI console: no Mode 7 picture, 128 precomputed frames.
+            sh.append("  .DB $00, $00, $00")
+            sh.append("  " + ptr_bytes(frame_table_labels[1]))
+            sh.append(f"  .DB ${MAGI_FRAMES:02X}, $00, $08, $00, $00, $00")
+            sh.append("  .DW $0000")
+            sh.append(f"  .DW SceneNameTable+{scene * 16}")
         else:
             frame_count = NEON_FRAMES if scene == 5 else FRAME_COUNT
             scroll = 188 if scene == 2 else 0
@@ -1579,6 +2246,12 @@ def main() -> None:
         for label in labels:
             sh.append("  " + ptr_bytes(label))
         sh.append("")
+
+    # Per-frame VRAM write lists for the Pulse Analyzer console.
+    sh.append("MagiUpdatePtrs:")
+    for fi in range(MAGI_FRAMES):
+        sh.append("  " + ptr_bytes(f"MagiUpdate{fi}"))
+    sh.append("")
 
     # HDMA table for Vector City: one 2-byte M7VOFS value per scanline.
     sh.append("CityHdmaTable:")

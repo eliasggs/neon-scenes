@@ -16,6 +16,14 @@
 .DEFINE EXTRA_TILE_BYTES_LO $E0
 .DEFINE EXTRA_TILE_BYTES_HI $10
 .DEFINE NEON_PHASES 32
+.DEFINE MAGI_FRAMES 128
+.DEFINE MAGI_UI_TILE_BYTES_LO $80
+.DEFINE MAGI_UI_TILE_BYTES_HI $3F
+.DEFINE MAGI_CELL_TILE_BYTES_LO $00
+.DEFINE MAGI_CELL_TILE_BYTES_HI $01
+.DEFINE MAGI_BG1_MAP $3400
+.DEFINE MAGI_BG2_MAP $3800
+.DEFINE MAGI_BG3_MAP $3C00
 
 SelectorMap0:
   .DB $0D, $04, $0D, $04, $0D, $04, $0D, $04, $0D, $04, $0D, $04, $0D, $04, $0D, $04
@@ -1709,6 +1717,50 @@ ThemeBgNeonPtrs:
   .DW ThemeBgNeon0, ThemeBgNeon1, ThemeBgNeon2, ThemeBgNeon3
 ThemeBgNeonBanks:
   .DB :ThemeBgNeon0, :ThemeBgNeon1, :ThemeBgNeon2, :ThemeBgNeon3
+ThemeBgMagi0:
+  .DB $00, $00, $23, $00, $25, $00, $47, $00, $00, $00, $25, $00, $47, $00, $6B, $00
+  .DB $00, $00, $49, $00, $8D, $00, $B1, $00, $00, $00, $8D, $00, $B3, $00, $D6, $00
+  .DB $00, $00, $B3, $00, $F9, $00, $5F, $01, $00, $00, $F9, $00, $9F, $01, $3F, $02
+  .DB $00, $00, $3F, $02, $DF, $1A, $5F, $33, $00, $00, $DF, $1A, $9F, $3B, $FF, $7F
+  .DB $00, $00, $00, $00, $01, $00, $23, $00, $45, $00, $5F, $01, $DF, $01, $BF, $1A
+  .DB $3F, $03, $BF, $53, $FF, $7F, $D5, $00, $51, $00, $9F, $10, $1F, $00, $EC, $4F
+  .DB $00, $00, $25, $00, $49, $00, $5F, $01, $DF, $01, $BF, $02, $3F, $03, $BF, $53
+  .DB $9F, $10, $1F, $00, $FF, $7F, $51, $00, $00, $00, $EC, $4F, $F6, $00, $5F, $33
+
+ThemeBgMagi1:
+  .DB $00, $00, $03, $00, $05, $00, $07, $00, $00, $00, $05, $00, $07, $00, $0B, $00
+  .DB $00, $00, $09, $00, $0D, $00, $11, $00, $00, $00, $0D, $00, $13, $00, $16, $00
+  .DB $00, $00, $13, $00, $19, $04, $1F, $00, $00, $00, $19, $04, $5F, $00, $DF, $00
+  .DB $00, $00, $DF, $00, $9F, $0D, $5F, $2A, $00, $00, $9F, $0D, $BF, $32, $FF, $7F
+  .DB $00, $00, $00, $00, $01, $00, $03, $00, $05, $00, $1F, $00, $9F, $00, $7F, $11
+  .DB $FF, $01, $1F, $4F, $FF, $7F, $15, $00, $11, $0C, $3F, $2C, $1F, $28, $EB, $2F
+  .DB $00, $00, $05, $00, $09, $00, $1F, $00, $9F, $00, $5F, $01, $FF, $01, $1F, $4F
+  .DB $3F, $2C, $1F, $28, $FF, $7F, $11, $0C, $00, $00, $EB, $2F, $16, $00, $5F, $2A
+
+ThemeBgMagi2:
+  .DB $00, $00, $60, $00, $A0, $00, $E0, $00, $00, $00, $A0, $00, $E0, $00, $60, $05
+  .DB $00, $00, $20, $01, $A0, $05, $20, $06, $00, $00, $A0, $05, $60, $0A, $C0, $0A
+  .DB $00, $00, $60, $0A, $20, $0B, $E0, $13, $00, $00, $20, $0B, $E0, $1F, $E0, $2F
+  .DB $00, $00, $E0, $2F, $E4, $43, $EB, $5B, $00, $00, $E4, $43, $ED, $63, $FF, $7F
+  .DB $00, $00, $00, $00, $20, $00, $60, $00, $A0, $04, $E0, $13, $E0, $27, $E5, $43
+  .DB $E0, $53, $F3, $6F, $FF, $7F, $A0, $0A, $20, $02, $E8, $0B, $E6, $03, $70, $7D
+  .DB $00, $00, $A0, $00, $20, $01, $E0, $13, $E0, $27, $E0, $43, $E0, $53, $F3, $6F
+  .DB $E8, $0B, $E6, $03, $FF, $7F, $20, $02, $00, $00, $70, $7D, $C0, $0E, $EB, $5B
+
+ThemeBgMagi3:
+  .DB $00, $00, $63, $0C, $84, $10, $A5, $18, $00, $00, $84, $10, $A5, $18, $E7, $20
+  .DB $00, $00, $C6, $1C, $08, $29, $4A, $31, $00, $00, $08, $29, $6B, $35, $AD, $3D
+  .DB $00, $00, $6B, $35, $CE, $41, $52, $52, $00, $00, $CE, $41, $73, $5A, $B5, $62
+  .DB $00, $00, $B5, $62, $18, $73, $7B, $7F, $00, $00, $18, $73, $9C, $7F, $FF, $7F
+  .DB $00, $00, $00, $04, $42, $08, $63, $0C, $84, $14, $52, $52, $94, $5E, $18, $6F
+  .DB $39, $77, $BD, $7F, $FF, $7F, $8C, $39, $29, $29, $CE, $45, $8C, $35, $5A, $77
+  .DB $00, $00, $84, $10, $C6, $1C, $52, $52, $94, $5E, $F7, $6E, $39, $77, $BD, $7F
+  .DB $CE, $45, $8C, $35, $FF, $7F, $29, $29, $00, $00, $5A, $77, $AD, $3D, $7B, $7F
+
+ThemeBgMagiPtrs:
+  .DW ThemeBgMagi0, ThemeBgMagi1, ThemeBgMagi2, ThemeBgMagi3
+ThemeBgMagiBanks:
+  .DB :ThemeBgMagi0, :ThemeBgMagi1, :ThemeBgMagi2, :ThemeBgMagi3
 
 NeonVTablePtrs:
   .DB <NeonVTable0, >NeonVTable0, :NeonVTable0
@@ -1758,10 +1810,10 @@ SceneDesc:
   .DB $78, $00, $00, $58, $00, $00
   .DW $3700
   .DW SceneNameTable+0
-  .DB <SceneBg1, >SceneBg1, :SceneBg1
+  .DB $00, $00, $00
   .DB <SceneFramePtrs1, >SceneFramePtrs1, :SceneFramePtrs1
-  .DB $78, $00, $00, $58, $00, $00
-  .DW $3700
+  .DB $80, $00, $08, $00, $00, $00
+  .DW $0000
   .DW SceneNameTable+16
   .DB <SceneBg2, >SceneBg2, :SceneBg2
   .DB <SceneFramePtrs2, >SceneFramePtrs2, :SceneFramePtrs2
@@ -2027,6 +2079,14 @@ SceneFramePtrs1:
   .DB <Scene1Frame117, >Scene1Frame117, :Scene1Frame117
   .DB <Scene1Frame118, >Scene1Frame118, :Scene1Frame118
   .DB <Scene1Frame119, >Scene1Frame119, :Scene1Frame119
+  .DB <Scene1Frame120, >Scene1Frame120, :Scene1Frame120
+  .DB <Scene1Frame121, >Scene1Frame121, :Scene1Frame121
+  .DB <Scene1Frame122, >Scene1Frame122, :Scene1Frame122
+  .DB <Scene1Frame123, >Scene1Frame123, :Scene1Frame123
+  .DB <Scene1Frame124, >Scene1Frame124, :Scene1Frame124
+  .DB <Scene1Frame125, >Scene1Frame125, :Scene1Frame125
+  .DB <Scene1Frame126, >Scene1Frame126, :Scene1Frame126
+  .DB <Scene1Frame127, >Scene1Frame127, :Scene1Frame127
 
 SceneFramePtrs2:
   .DB <Scene2Frame0, >Scene2Frame0, :Scene2Frame0
@@ -2274,6 +2334,136 @@ SceneFramePtrs3:
 
 SceneFramePtrs5:
   .DB <Scene5Frame0, >Scene5Frame0, :Scene5Frame0
+
+MagiUpdatePtrs:
+  .DB <MagiUpdate0, >MagiUpdate0, :MagiUpdate0
+  .DB <MagiUpdate1, >MagiUpdate1, :MagiUpdate1
+  .DB <MagiUpdate2, >MagiUpdate2, :MagiUpdate2
+  .DB <MagiUpdate3, >MagiUpdate3, :MagiUpdate3
+  .DB <MagiUpdate4, >MagiUpdate4, :MagiUpdate4
+  .DB <MagiUpdate5, >MagiUpdate5, :MagiUpdate5
+  .DB <MagiUpdate6, >MagiUpdate6, :MagiUpdate6
+  .DB <MagiUpdate7, >MagiUpdate7, :MagiUpdate7
+  .DB <MagiUpdate8, >MagiUpdate8, :MagiUpdate8
+  .DB <MagiUpdate9, >MagiUpdate9, :MagiUpdate9
+  .DB <MagiUpdate10, >MagiUpdate10, :MagiUpdate10
+  .DB <MagiUpdate11, >MagiUpdate11, :MagiUpdate11
+  .DB <MagiUpdate12, >MagiUpdate12, :MagiUpdate12
+  .DB <MagiUpdate13, >MagiUpdate13, :MagiUpdate13
+  .DB <MagiUpdate14, >MagiUpdate14, :MagiUpdate14
+  .DB <MagiUpdate15, >MagiUpdate15, :MagiUpdate15
+  .DB <MagiUpdate16, >MagiUpdate16, :MagiUpdate16
+  .DB <MagiUpdate17, >MagiUpdate17, :MagiUpdate17
+  .DB <MagiUpdate18, >MagiUpdate18, :MagiUpdate18
+  .DB <MagiUpdate19, >MagiUpdate19, :MagiUpdate19
+  .DB <MagiUpdate20, >MagiUpdate20, :MagiUpdate20
+  .DB <MagiUpdate21, >MagiUpdate21, :MagiUpdate21
+  .DB <MagiUpdate22, >MagiUpdate22, :MagiUpdate22
+  .DB <MagiUpdate23, >MagiUpdate23, :MagiUpdate23
+  .DB <MagiUpdate24, >MagiUpdate24, :MagiUpdate24
+  .DB <MagiUpdate25, >MagiUpdate25, :MagiUpdate25
+  .DB <MagiUpdate26, >MagiUpdate26, :MagiUpdate26
+  .DB <MagiUpdate27, >MagiUpdate27, :MagiUpdate27
+  .DB <MagiUpdate28, >MagiUpdate28, :MagiUpdate28
+  .DB <MagiUpdate29, >MagiUpdate29, :MagiUpdate29
+  .DB <MagiUpdate30, >MagiUpdate30, :MagiUpdate30
+  .DB <MagiUpdate31, >MagiUpdate31, :MagiUpdate31
+  .DB <MagiUpdate32, >MagiUpdate32, :MagiUpdate32
+  .DB <MagiUpdate33, >MagiUpdate33, :MagiUpdate33
+  .DB <MagiUpdate34, >MagiUpdate34, :MagiUpdate34
+  .DB <MagiUpdate35, >MagiUpdate35, :MagiUpdate35
+  .DB <MagiUpdate36, >MagiUpdate36, :MagiUpdate36
+  .DB <MagiUpdate37, >MagiUpdate37, :MagiUpdate37
+  .DB <MagiUpdate38, >MagiUpdate38, :MagiUpdate38
+  .DB <MagiUpdate39, >MagiUpdate39, :MagiUpdate39
+  .DB <MagiUpdate40, >MagiUpdate40, :MagiUpdate40
+  .DB <MagiUpdate41, >MagiUpdate41, :MagiUpdate41
+  .DB <MagiUpdate42, >MagiUpdate42, :MagiUpdate42
+  .DB <MagiUpdate43, >MagiUpdate43, :MagiUpdate43
+  .DB <MagiUpdate44, >MagiUpdate44, :MagiUpdate44
+  .DB <MagiUpdate45, >MagiUpdate45, :MagiUpdate45
+  .DB <MagiUpdate46, >MagiUpdate46, :MagiUpdate46
+  .DB <MagiUpdate47, >MagiUpdate47, :MagiUpdate47
+  .DB <MagiUpdate48, >MagiUpdate48, :MagiUpdate48
+  .DB <MagiUpdate49, >MagiUpdate49, :MagiUpdate49
+  .DB <MagiUpdate50, >MagiUpdate50, :MagiUpdate50
+  .DB <MagiUpdate51, >MagiUpdate51, :MagiUpdate51
+  .DB <MagiUpdate52, >MagiUpdate52, :MagiUpdate52
+  .DB <MagiUpdate53, >MagiUpdate53, :MagiUpdate53
+  .DB <MagiUpdate54, >MagiUpdate54, :MagiUpdate54
+  .DB <MagiUpdate55, >MagiUpdate55, :MagiUpdate55
+  .DB <MagiUpdate56, >MagiUpdate56, :MagiUpdate56
+  .DB <MagiUpdate57, >MagiUpdate57, :MagiUpdate57
+  .DB <MagiUpdate58, >MagiUpdate58, :MagiUpdate58
+  .DB <MagiUpdate59, >MagiUpdate59, :MagiUpdate59
+  .DB <MagiUpdate60, >MagiUpdate60, :MagiUpdate60
+  .DB <MagiUpdate61, >MagiUpdate61, :MagiUpdate61
+  .DB <MagiUpdate62, >MagiUpdate62, :MagiUpdate62
+  .DB <MagiUpdate63, >MagiUpdate63, :MagiUpdate63
+  .DB <MagiUpdate64, >MagiUpdate64, :MagiUpdate64
+  .DB <MagiUpdate65, >MagiUpdate65, :MagiUpdate65
+  .DB <MagiUpdate66, >MagiUpdate66, :MagiUpdate66
+  .DB <MagiUpdate67, >MagiUpdate67, :MagiUpdate67
+  .DB <MagiUpdate68, >MagiUpdate68, :MagiUpdate68
+  .DB <MagiUpdate69, >MagiUpdate69, :MagiUpdate69
+  .DB <MagiUpdate70, >MagiUpdate70, :MagiUpdate70
+  .DB <MagiUpdate71, >MagiUpdate71, :MagiUpdate71
+  .DB <MagiUpdate72, >MagiUpdate72, :MagiUpdate72
+  .DB <MagiUpdate73, >MagiUpdate73, :MagiUpdate73
+  .DB <MagiUpdate74, >MagiUpdate74, :MagiUpdate74
+  .DB <MagiUpdate75, >MagiUpdate75, :MagiUpdate75
+  .DB <MagiUpdate76, >MagiUpdate76, :MagiUpdate76
+  .DB <MagiUpdate77, >MagiUpdate77, :MagiUpdate77
+  .DB <MagiUpdate78, >MagiUpdate78, :MagiUpdate78
+  .DB <MagiUpdate79, >MagiUpdate79, :MagiUpdate79
+  .DB <MagiUpdate80, >MagiUpdate80, :MagiUpdate80
+  .DB <MagiUpdate81, >MagiUpdate81, :MagiUpdate81
+  .DB <MagiUpdate82, >MagiUpdate82, :MagiUpdate82
+  .DB <MagiUpdate83, >MagiUpdate83, :MagiUpdate83
+  .DB <MagiUpdate84, >MagiUpdate84, :MagiUpdate84
+  .DB <MagiUpdate85, >MagiUpdate85, :MagiUpdate85
+  .DB <MagiUpdate86, >MagiUpdate86, :MagiUpdate86
+  .DB <MagiUpdate87, >MagiUpdate87, :MagiUpdate87
+  .DB <MagiUpdate88, >MagiUpdate88, :MagiUpdate88
+  .DB <MagiUpdate89, >MagiUpdate89, :MagiUpdate89
+  .DB <MagiUpdate90, >MagiUpdate90, :MagiUpdate90
+  .DB <MagiUpdate91, >MagiUpdate91, :MagiUpdate91
+  .DB <MagiUpdate92, >MagiUpdate92, :MagiUpdate92
+  .DB <MagiUpdate93, >MagiUpdate93, :MagiUpdate93
+  .DB <MagiUpdate94, >MagiUpdate94, :MagiUpdate94
+  .DB <MagiUpdate95, >MagiUpdate95, :MagiUpdate95
+  .DB <MagiUpdate96, >MagiUpdate96, :MagiUpdate96
+  .DB <MagiUpdate97, >MagiUpdate97, :MagiUpdate97
+  .DB <MagiUpdate98, >MagiUpdate98, :MagiUpdate98
+  .DB <MagiUpdate99, >MagiUpdate99, :MagiUpdate99
+  .DB <MagiUpdate100, >MagiUpdate100, :MagiUpdate100
+  .DB <MagiUpdate101, >MagiUpdate101, :MagiUpdate101
+  .DB <MagiUpdate102, >MagiUpdate102, :MagiUpdate102
+  .DB <MagiUpdate103, >MagiUpdate103, :MagiUpdate103
+  .DB <MagiUpdate104, >MagiUpdate104, :MagiUpdate104
+  .DB <MagiUpdate105, >MagiUpdate105, :MagiUpdate105
+  .DB <MagiUpdate106, >MagiUpdate106, :MagiUpdate106
+  .DB <MagiUpdate107, >MagiUpdate107, :MagiUpdate107
+  .DB <MagiUpdate108, >MagiUpdate108, :MagiUpdate108
+  .DB <MagiUpdate109, >MagiUpdate109, :MagiUpdate109
+  .DB <MagiUpdate110, >MagiUpdate110, :MagiUpdate110
+  .DB <MagiUpdate111, >MagiUpdate111, :MagiUpdate111
+  .DB <MagiUpdate112, >MagiUpdate112, :MagiUpdate112
+  .DB <MagiUpdate113, >MagiUpdate113, :MagiUpdate113
+  .DB <MagiUpdate114, >MagiUpdate114, :MagiUpdate114
+  .DB <MagiUpdate115, >MagiUpdate115, :MagiUpdate115
+  .DB <MagiUpdate116, >MagiUpdate116, :MagiUpdate116
+  .DB <MagiUpdate117, >MagiUpdate117, :MagiUpdate117
+  .DB <MagiUpdate118, >MagiUpdate118, :MagiUpdate118
+  .DB <MagiUpdate119, >MagiUpdate119, :MagiUpdate119
+  .DB <MagiUpdate120, >MagiUpdate120, :MagiUpdate120
+  .DB <MagiUpdate121, >MagiUpdate121, :MagiUpdate121
+  .DB <MagiUpdate122, >MagiUpdate122, :MagiUpdate122
+  .DB <MagiUpdate123, >MagiUpdate123, :MagiUpdate123
+  .DB <MagiUpdate124, >MagiUpdate124, :MagiUpdate124
+  .DB <MagiUpdate125, >MagiUpdate125, :MagiUpdate125
+  .DB <MagiUpdate126, >MagiUpdate126, :MagiUpdate126
+  .DB <MagiUpdate127, >MagiUpdate127, :MagiUpdate127
 
 CityHdmaTable:
   .DB $01, $00, $00

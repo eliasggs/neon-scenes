@@ -1,4 +1,4 @@
-; auto-generated bank layout (15 banks of scene data)
+; auto-generated bank layout (12 banks of scene data)
 
 .BANK 1 SLOT 0
 .ORGA $8000
@@ -47,15 +47,3 @@
 .BANK 12 SLOT 0
 .ORGA $8000
 .INCLUDE "bank12.inc"
-
-.BANK 13 SLOT 0
-.ORGA $8000
-.INCLUDE "bank13.inc"
-
-.BANK 14 SLOT 0
-.ORGA $8000
-.INCLUDE "bank14.inc"
-
-.BANK 15 SLOT 0
-.ORGA $8000
-.INCLUDE "bank15.inc"
