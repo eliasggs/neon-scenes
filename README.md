@@ -8,17 +8,17 @@ synthwave Neon City.
 
 ![Scene selector](screenshots/title.png)
 ![Holo Planet](screenshots/scene-holo.png)
-![Pulse Analyzer on a CRT](screenshots/scene-pulse.png)
+[![Pulse Analyzer on a CRT](screenshots/scene-pulse.png)](screenshots/full/scene-pulse.png)
 ![Pulse Analyzer, MONO theme](screenshots/scene-pulse-mono.png)
 ![Vector City](screenshots/scene-city.png)
-![Atomic on a CRT](screenshots/scene-atomic.png)
-![Neon City on a CRT](screenshots/scene-neon.png)
-![Lissajous on a CRT](screenshots/scene-lissajous.png)
+[![Atomic on a CRT](screenshots/scene-atomic.png)](screenshots/full/scene-atomic.png)
+[![Neon City on a CRT](screenshots/scene-neon.png)](screenshots/full/scene-neon.png)
+[![Lissajous on a CRT](screenshots/scene-lissajous.png)](screenshots/full/scene-lissajous.png)
 ![Party mode](screenshots/party.png)
 
 The Pulse Analyzer, Atomic, Neon City and Lissajous images above are
-photographs of the demo running on a CRT display; the remaining scenes are
-emulator captures.
+photographs of the demo running on a CRT display; click one to open the
+full-size photo. The remaining images are emulator captures.
 
 ## Play
 
@@ -151,6 +151,7 @@ src/scenes_shared.inc     generated scene metadata for bank 1
 src/bankNN.inc            generated scene backgrounds and OAM frames
 src/scene_banks.inc       bank/include glue for the scene data
 screenshots/              native 256x224 captures
+screenshots/full/         full-size CRT photos
 tools/wla/                WLA-DX 10.7 binaries used by build.py
 ```
 
