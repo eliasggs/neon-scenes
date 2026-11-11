@@ -17,6 +17,11 @@ __pycache__/
 *.data.szsnes/
 
 # ---------------------------------------------------------------------------
+# Original camera exports (published copies live in screenshots/)
+# ---------------------------------------------------------------------------
+/ScreenPhotos/
+
+# ---------------------------------------------------------------------------
 # Third-party reference art (kept local; not redistributed with the demo)
 # ---------------------------------------------------------------------------
 /References/
