@@ -306,10 +306,6 @@ own value includes the bytes as stored, which made some tools disagree.
   Mode 7 VRAM/map layout.
 - [Awesome SNESdev](https://github.com/Scottcjn/awesome-snesdev) — the tool and
   documentation list used while building the tiled console.
-- The Pulse Analyzer layout follows the supplied `References/interface1.jpeg`,
-  `interface2.jpeg`, `Interface3.png` and the animated `Interface3.html`.
-- The Holo Planet console and globe follow `References/HoloPlanet.png` and the
-  animated `References/HoloPlanet.html`.
 
 ## License
 
