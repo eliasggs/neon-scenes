@@ -1,0 +1,31 @@
+# ---------------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------------
+/build/
+__pycache__/
+*.pyc
+
+# ---------------------------------------------------------------------------
+# Scratch space (preview ROMs, screenshot helpers, local experiments)
+# ---------------------------------------------------------------------------
+.tmp/
+
+# ---------------------------------------------------------------------------
+# Emulator and its local state
+# ---------------------------------------------------------------------------
+/snes9x/
+*.data.szsnes/
+
+# ---------------------------------------------------------------------------
+# Third-party reference art (kept local; not redistributed with the demo)
+# ---------------------------------------------------------------------------
+/References/
+
+# ---------------------------------------------------------------------------
+# Third-party WLA-DX binaries (GPL-2.0-or-later, ~8 MB of Windows executables).
+# build.py expects them in tools/wla/wla_dx_v10.7_Win64/; see README "Build".
+# Delete the two lines below if you would rather vendor them for a
+# clone-and-build repo.
+# ---------------------------------------------------------------------------
+/tools/wla/wla_dx_v10.7_Win64/
+/tools/wla/*.zip

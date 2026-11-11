@@ -136,6 +136,7 @@ source explicitly marks 8-bit immediates with `.B` where needed.
 ```text
 NeonScenes.sfc     final ROM (512 KiB)
 NeonScenes.sym     WLA symbol map for debugging
+LICENSE                   GNU General Public License v3.0
 build.py                  one-command build + ROM validation
 check_hardware.py         static LoROM/hardware audit for the shipped ROM
 generate_assets.py        fonts, palettes, Lissajous frequency tables, tilemaps
@@ -309,5 +310,10 @@ own value includes the bytes as stored, which made some tools disagree.
   `interface2.jpeg`, `Interface3.png` and the animated `Interface3.html`.
 - The Holo Planet console and globe follow `References/HoloPlanet.png` and the
   animated `References/HoloPlanet.html`.
+
+## License
+
+The demo and its source are released under the GNU General Public License
+v3.0. See [LICENSE](LICENSE).
 
 

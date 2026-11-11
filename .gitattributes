@@ -1,0 +1,12 @@
+# Normalize text files in the repository; keep binaries untouched.
+* text=auto
+*.sfc binary
+*.sym text
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.zip binary
+*.o binary
+*.exe binary
+*.dll binary
